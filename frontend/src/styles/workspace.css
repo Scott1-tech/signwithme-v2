@@ -1,0 +1,663 @@
+/* ==========================================================================
+   The single contract workspace (`workspace/Workspace.tsx`, W1)
+   --------------------------------------------------------------------------
+   The workspace keeps the review screen's split: `.review` (flex row),
+   `.review__document` (the document column) and `.review__panel` (the
+   right-hand panel). Those class names are part of the test contract
+   (`test_override.py` reads `.review__document .alert--error`) and every rule
+   for them stays in `index.css` / `viewer.css`. This file only ADDS:
+
+   * the placing mode -- while a text/date/check/cross tool is armed, the slot
+     layer steps aside (`pointer-events: none`), so a click on a slot box, a
+     slot signature or a slot date lands on the page and places the
+     annotation (plan §2.4 d). Select and Signature keep the slots live;
+   * the accordion sections of the panel and the sticky finalize bar;
+   * the toolbar docked in the document column (oqimda: tests click exact
+     pixels on the page, so it takes its natural height above the viewer).
+
+   Nothing here touches `.pdf-page` or its box: the checks read the render
+   scale off it.
+   ========================================================================== */
+
+/* -- placing mode: the slot layer takes no pointer events --------------------- */
+.workspace--placing .pdf-overlay > .slot,
+.workspace--placing .pdf-overlay > .placed-signature,
+.workspace--placing .pdf-overlay > .placed-signature--draggable,
+.workspace--placing .pdf-overlay > .placed-dates,
+.workspace--placing .pdf-overlay .placed-dates text,
+.workspace--placing .pdf-overlay > .slot-tools,
+.workspace--placing .pdf-overlay > .slot-resize,
+.workspace--placing .pdf-overlay > .slot-resize-ghost {
+  pointer-events: none;
+}
+/* The mini panel and the grip would only be in the way while placing. */
+.workspace--placing .pdf-overlay > .slot-tools,
+.workspace--placing .pdf-overlay > .slot-resize { visibility: hidden; }
+
+/* -- text tools (edit-text, WE): the page's own LINES take the click ---------- */
+/* Only on an upright page (a turned page has no text layer anyway, and its
+   shield stays on top). Everything the overlay draws above the text steps
+   aside, so a line under a review mark, an annotation or a signature can still
+   be reached; the inline box stays live. */
+.workspace--text-tools .pdf-page:not(.pdf-page--rotated) .pdf-text-line {
+  pointer-events: auto;
+}
+.workspace--text-tools .pdf-overlay > .highlight,
+.workspace--text-tools .pdf-overlay > .swm-ann,
+.workspace--text-tools .pdf-overlay > .swm-ann-handle,
+.workspace--text-tools .pdf-overlay > .swm-sig {
+  pointer-events: none;
+}
+
+/* -- text-selection tools (highlight / underline / strikeout, W3) ------------- */
+/* The page's own spans take the pointer, so a drag SELECTS text (the browser's
+   own selection, read by `workspace/text/useTextSelection.ts`). Only on an
+   upright page: a turned page has no text layer, and its shield stays on top --
+   the markup tools are off there. `.pdf-text-layer` itself stays inert; its
+   `.textLayer` child (pdf.js' spans, full page) is what is switched on. */
+.workspace--text-select .pdf-page:not(.pdf-page--rotated) .pdf-text-layer .textLayer {
+  pointer-events: auto;
+  cursor: text;
+}
+.workspace--text-select .pdf-page:not(.pdf-page--rotated) .pdf-text-layer .textLayer ::selection {
+  background: rgba(250, 204, 21, 0.45);
+}
+
+/* The markup tools' glyphs say what they do: a marker swatch, a line under, a line through. */
+.editor__tool[data-testid='tool-highlight'] .editor__tool-glyph {
+  background: rgba(250, 204, 21, 0.55);
+  border-radius: 2px;
+  padding: 0 2px;
+}
+.editor__tool[data-testid='tool-underline'] .editor__tool-glyph {
+  text-decoration: underline;
+  text-decoration-color: #dc2626;
+  text-decoration-thickness: 2px;
+}
+.editor__tool[data-testid='tool-strikeout'] .editor__tool-glyph {
+  text-decoration: line-through;
+  text-decoration-color: #dc2626;
+  text-decoration-thickness: 2px;
+}
+
+/* A markup's further lines (one hit box per line): selected together. */
+.swm-ann--part.is-selected { background: var(--accent-soft); }
+
+/* -- drag tools (ink, rect, ellipse, line, arrow -- W4) ------------------------ */
+/* The capture layer is the overlay's FIRST child and covers the page; with a
+   drag tool armed everything the overlay draws above it steps aside (the slot
+   layer already does, `workspace--placing`), so a drag that starts over a
+   slot, a signature, a review mark or another annotation still draws. A turned
+   page keeps its shield on top: nothing is drawn there. */
+.pdf-overlay > .ws-capture {
+  position: absolute;
+  inset: 0;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.ws-capture__preview {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+.workspace--drawing .pdf-overlay > .highlight,
+.workspace--drawing .pdf-overlay > .swm-ann,
+.workspace--drawing .pdf-overlay > .swm-ann-handle,
+.workspace--drawing .pdf-overlay > .swm-sig,
+.workspace--drawing .pdf-overlay > .swm-note-popup {
+  pointer-events: none;
+}
+
+/* -- the toolbar's drop-downs (W4: «Markup ▾», «Shapes ▾») --------------------- */
+.ws-toolgroup {
+  position: relative;
+  display: inline-flex;
+  align-items: stretch;
+}
+/* The ▾ is a small flyout corner ON the main button (bottom-right), like the
+   tool groups of a drawing program: it costs the row no width at all -- the
+   row has seventeen tools and every property group to hold at 1600 px, also
+   with a free signature counted in it. */
+.ws-toolgroup__main { padding-right: 9px; }
+.ws-toolgroup__toggle {
+  position: absolute;
+  right: 1px;
+  bottom: 1px;
+  display: inline-flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  width: 12px;
+  height: 12px;
+  padding: 0 1px 1px 0;
+  border: none;
+  border-radius: 0 0 var(--radius-md) 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 9px;
+  line-height: 1;
+  cursor: pointer;
+}
+.ws-toolgroup__toggle:hover { background: var(--surface-hover); color: var(--text); }
+.ws-toolgroup.is-open > .ws-toolgroup__toggle { background: var(--surface-active); color: var(--text); }
+.ws-toolgroup.is-armed > .ws-toolgroup__toggle { color: var(--accent); }
+.ws-toolgroup__toggle:focus-visible {
+  outline: var(--focus-width) solid var(--focus-color);
+  outline-offset: var(--focus-offset);
+}
+.ws-toolgroup__menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: var(--z-overlay);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 180px;
+  padding: var(--space-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-md);
+}
+/* `hidden` must win over the `display: flex` above (the items stay in the DOM). */
+.ws-toolgroup__menu[hidden] { display: none; }
+.ws-toolmenu__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.ws-toolmenu__item:hover:not(:disabled) { background: var(--surface-hover); }
+.ws-toolmenu__item:focus-visible {
+  outline: var(--focus-width) solid var(--focus-color);
+  outline-offset: -2px;
+}
+.ws-toolmenu__item.is-active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: var(--weight-semibold);
+}
+.ws-toolmenu__item:disabled { color: var(--muted); cursor: not-allowed; }
+.ws-toolmenu__item .editor__tool-glyph { width: 1.4em; text-align: center; }
+.ws-toolmenu__label { flex: 1 1 auto; white-space: nowrap; }
+.ws-toolmenu__key {
+  padding: 0 5px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--text-xs);
+}
+.ws-toolbar--vertical .ws-toolgroup { flex-direction: row; }
+.ws-toolbar--vertical .ws-toolgroup__main { flex: 1 1 auto; justify-content: center; }
+.ws-toolbar--vertical .ws-toolgroup__menu { top: 0; left: calc(100% + 6px); }
+.ws-toolbar--vertical[data-edge='right'] .ws-toolgroup__menu { left: auto; right: calc(100% + 6px); }
+/* The bottom bar scrolls sideways, which would clip a list hanging off it. */
+.ws-toolbar--mobile .ws-toolgroup__menu {
+  position: fixed;
+  top: auto;
+  left: var(--space-2);
+  right: var(--space-2);
+  bottom: 72px;
+}
+.ws-toolbar--mobile .ws-toolgroup__toggle { width: 18px; height: 18px; }
+/* A compact row packs its tools a little closer (17 tools, one row at 1600 px). */
+.ws-toolbar--compact .ws-toolbar__tools { gap: 2px; }
+.ws-toolbar--compact .ws-toolbar__tools .editor__tool {
+  padding-left: 3px;
+  padding-right: 3px;
+  min-width: 25px;
+}
+.ws-toolbar--compact .ws-toolbar__tools .ws-toolgroup__main {
+  padding-left: 3px;
+  padding-right: 7px;
+  min-width: 29px;
+  justify-content: center;
+}
+
+/* -- the stroke and fill groups (W4) --------------------------------------------- */
+.ws-props__group--stroke .editor__number.ws-stroke { width: 64px; }
+.ws-fill { gap: 4px; }
+.ws-fill__swatch {
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid var(--text);
+  border-radius: 3px;
+  opacity: 0.8;
+}
+.ws-fill.is-active { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.ws-toolbar--compact .ws-fill .editor__button-word { display: none; }
+
+/* The colour dot in front of a markup row in «Objects». */
+.objects__swatch {
+  display: inline-block;
+  width: 0.75em;
+  height: 0.75em;
+  margin-right: 0.35em;
+  border-radius: 2px;
+  vertical-align: -0.05em;
+  opacity: 0.85;
+}
+
+/* The armed tool's cursor over an interactive page (from its registry entry). */
+.workspace .pdf-page--interactive { cursor: var(--tool-cursor, crosshair); }
+
+/* ==========================================================================
+   The floating toolbar (`workspace/toolbar/FloatingToolbar.tsx`, W2)
+   --------------------------------------------------------------------------
+   `docked-top` is the old toolbar's place and size: in the column's flow, one
+   row, so the page below starts where it always did (the checks click page
+   pixels). `floating` is absolute inside `.workspace__stage`; `vertical` is a
+   floating panel dropped on the left/right edge; `mobile` (≤ 640 px) is a bar
+   fixed to the bottom of the screen that scrolls sideways.
+   ========================================================================== */
+.workspace__stage { position: relative; }
+
+/* -- above the pages (fix 2026-09-27) ------------------------------------------
+   The lasting banners (finalize errors, comparison error, "same file as the
+   template") stand in one block, whose height `useGestureLayoutLock` freezes
+   while a press on a page is held. Empty, it cancels the column's gap, so the
+   pages sit exactly where they did before the block existed. */
+.workspace__banners { display: flex; flex-direction: column; gap: var(--space-2); }
+.workspace__banners:empty { margin-bottom: calc(-1 * var(--space-2)); }
+
+/* The passing note (`EditorNote`), floated over the top of the pages. */
+.ws-note {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: 0;
+  box-shadow: var(--shadow-md, 0 4px 14px rgba(0, 0, 0, 0.18));
+}
+.ws-note .ws-note__text { flex: 1 1 auto; margin: 0; }
+.ws-note__close {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  margin: -2px -4px 0 0;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+.ws-note__close:hover { background: rgba(0, 0, 0, 0.06); }
+.ws-note__close:focus-visible {
+  outline: var(--focus-width) solid var(--focus-color);
+  outline-offset: var(--focus-offset);
+}
+
+.ws-toolbar {
+  flex-wrap: nowrap;
+  position: relative;
+  z-index: var(--z-sticky);
+  min-width: 0;
+}
+.ws-toolbar > * { flex: 0 0 auto; }
+.ws-toolbar__main {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.ws-toolbar__tools { flex-wrap: nowrap; }
+/* The counts keep the far right of a docked row, as they always did. */
+.ws-toolbar--docked-top > .ws-props__group--status { margin-left: auto; }
+/* Every group keeps its divider wherever it stands: a width that changed with
+   the position would make the «More ▾» maths chase its own tail. */
+.ws-toolbar > .editor__group,
+.ws-toolbar__main > .editor__group {
+  padding-right: var(--space-2);
+  border-right: 1px solid var(--border-subtle);
+}
+.ws-toolbar > .ws-props__group--status { padding-right: 0; border-right: none; }
+
+.ws-toolbar__grip,
+.ws-toolbar__collapse {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  line-height: 1;
+}
+.ws-toolbar__grip {
+  width: 18px;
+  align-self: stretch;
+  min-height: 28px;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.ws-toolbar.is-dragging,
+.ws-toolbar.is-dragging .ws-toolbar__grip { cursor: grabbing; }
+.ws-toolbar__grip:disabled { cursor: default; opacity: 0.5; }
+.ws-toolbar__collapse { width: 22px; height: 28px; cursor: pointer; }
+.ws-toolbar__grip:hover:not(:disabled),
+.ws-toolbar__collapse:hover { background: var(--surface-hover); color: var(--text); }
+.ws-toolbar__grip:focus-visible,
+.ws-toolbar__collapse:focus-visible,
+.ws-color__option:focus-visible {
+  outline: var(--focus-width) solid var(--focus-color);
+  outline-offset: var(--focus-offset);
+}
+
+/* -- the tool that cannot be used right now says why: a one-line badge ------- */
+.ws-toolbar__reason {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 17ch;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--warn-bg);
+  color: var(--warn);
+  font-size: var(--text-sm);
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  cursor: help;
+}
+.ws-toolbar__reason-text { overflow: hidden; text-overflow: ellipsis; }
+
+/* A folded docked panel is as wide as what is left in it, not the column. */
+.ws-toolbar--docked-top.ws-toolbar--collapsed { align-self: flex-start; width: max-content; }
+
+/* -- floating ------------------------------------------------------------------ */
+.ws-toolbar--floating {
+  position: absolute;
+  z-index: var(--z-overlay);
+  width: max-content;
+  max-width: calc(100% - 16px);
+  box-shadow: var(--shadow-md);
+}
+
+/* -- vertical (dropped on the left / right edge) -------------------------------- */
+.ws-toolbar--vertical {
+  flex-direction: column;
+  align-items: stretch;
+  max-height: calc(100% - 16px);
+  overflow: visible;
+}
+.ws-toolbar--vertical .ws-toolbar__main,
+.ws-toolbar--vertical .ws-toolbar__tools { flex-direction: column; align-items: stretch; }
+.ws-toolbar--vertical .ws-toolbar__tools {
+  padding-right: 0;
+  padding-bottom: var(--space-1);
+  border-right: none;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.ws-toolbar--vertical .ws-toolbar__grip { width: auto; min-height: 16px; align-self: stretch; }
+.ws-toolbar--vertical .ws-toolbar__collapse { width: auto; }
+.ws-toolbar--vertical .editor__tool { justify-content: center; }
+
+/* Glyph only: vertical, collapsed, compact (a row that would not fit) and mobile. */
+.ws-toolbar--vertical .editor__tool-label,
+.ws-toolbar--collapsed .editor__tool-label,
+.ws-toolbar--compact .editor__tool-label,
+.ws-toolbar--mobile .editor__tool-label { display: none; }
+/* A compact row is glyphs only: tighter sides, so the ten tools of W3 and every
+   property group still share one row at 1600 px (nothing under «More ▾»).
+   W5: 3 px sides / 25 px (was 4 / 27) -- the twelve buttons of 19 tools and a
+   free-signature count still fit one row at 1600 px. */
+.ws-toolbar--compact .ws-toolbar__tools .editor__tool {
+  padding-left: 3px;
+  padding-right: 3px;
+  min-width: 25px;
+  justify-content: center;
+}
+/* ... and Undo / Redo keep their arrow and depth (the words stay in the
+   accessible name and the tooltip), like the field labels above. */
+.ws-toolbar--compact > .ws-props__group--history .editor__button-word { display: none; }
+/* F1a: in a wide row Undo / Redo stand right after the tools (`ws-toolbar__history`). */
+.ws-toolbar--compact .ws-toolbar__history .editor__button-word { display: none; }
+/* W5: Delete likewise (its glyph ⌫ stays; the accessible name and title are unchanged). */
+.ws-toolbar--compact > .ws-props__group--edit .editor__button-word { display: none; }
+.ws-toolbar--vertical .ws-toolbar__reason,
+.ws-toolbar--collapsed .ws-toolbar__reason,
+.ws-toolbar--mobile .ws-toolbar__reason { max-width: none; padding: 2px 6px; justify-content: center; }
+.ws-toolbar--vertical .ws-toolbar__reason-text,
+.ws-toolbar--collapsed .ws-toolbar__reason-text,
+.ws-toolbar--mobile .ws-toolbar__reason-text {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* -- «More ▾» and the properties pop-over --------------------------------------- */
+.ws-toolbar__more,
+.ws-toolbar__props { position: relative; display: inline-flex; }
+.ws-toolbar__popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: var(--z-overlay);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 240px;
+  padding: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-md);
+}
+.ws-toolbar__popover--end { left: auto; right: 0; }
+.ws-toolbar--vertical .ws-toolbar__popover { top: 0; left: calc(100% + 6px); }
+.ws-toolbar--vertical[data-edge='right'] .ws-toolbar__popover { left: auto; right: calc(100% + 6px); }
+.ws-props__group--stack {
+  flex-wrap: wrap;
+  padding-right: 0;
+  border-right: none;
+}
+
+/* -- the colour palette ----------------------------------------------------------- */
+.ws-color { position: relative; display: inline-flex; }
+.ws-color__button { padding: var(--button-pad-y) 6px; gap: 2px; }
+.ws-color__swatch {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgba(16, 24, 40, 0.25);
+}
+.ws-color__caret { color: var(--muted); font-size: var(--text-xs); }
+.ws-color__button:disabled .ws-color__swatch { opacity: 0.4; }
+.ws-color__palette {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: var(--z-overlay);
+  display: grid;
+  grid-template-columns: repeat(7, 24px);
+  gap: 6px;
+  padding: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-md);
+}
+.ws-color__option {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 2px solid var(--surface);
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px var(--border-strong);
+  cursor: pointer;
+}
+.ws-color__option.is-selected { box-shadow: 0 0 0 2px var(--accent); }
+
+/* -- ≤ 640 px: a bottom bar ------------------------------------------------------ */
+.ws-toolbar--mobile {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: var(--z-overlay);
+  border-radius: 0;
+  border-left: none;
+  border-right: none;
+  border-bottom: none;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  padding-bottom: calc(var(--space-2) + env(safe-area-inset-bottom, 0px));
+  box-shadow: 0 -4px 12px rgba(16, 24, 40, 0.12);
+}
+.ws-toolbar--mobile .editor__tool,
+.ws-toolbar--mobile .editor__button,
+.ws-toolbar--mobile .ws-toolbar__collapse {
+  min-width: 44px;
+  min-height: 44px;
+  justify-content: center;
+}
+/* The bar scrolls sideways, which would clip a pop-over hanging off it. */
+.ws-toolbar--mobile .ws-toolbar__popover {
+  position: fixed;
+  top: auto;
+  left: var(--space-2);
+  right: var(--space-2);
+  bottom: 72px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+@media (max-width: 640px) {
+  /* Room at the end of the page for the bar that now covers the bottom. */
+  .workspace { padding-bottom: 72px; }
+}
+
+/* -- a free signature picked from the Objects list --------------------------- */
+.swm-sig.is-selected {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* -- the panel: accordion sections + the finalize bar ------------------------ */
+.workspace__panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  /* The sticky bar sits on the very bottom edge; with padding below it the
+     sections would scroll past underneath and peek out. */
+  padding-bottom: 0;
+}
+.workspace__sections {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.workspace-section {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+.workspace-section__heading {
+  margin: 0;
+  font-size: var(--text-base);
+}
+.workspace-section__toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-radius: var(--radius-lg);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-weight: var(--weight-semibold);
+  text-align: left;
+  cursor: pointer;
+}
+.workspace-section__toggle:hover { background: var(--surface-hover); }
+.workspace-section__toggle:focus-visible {
+  outline: var(--focus-width) solid var(--focus-color);
+  outline-offset: var(--focus-offset);
+}
+.workspace-section__chevron { width: 1em; color: var(--muted); }
+.workspace-section__title { flex: 0 1 auto; }
+.workspace-section__badge {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-normal);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.workspace-section__body {
+  padding: 0 var(--space-2) var(--space-2);
+}
+.workspace-section.is-open > .workspace-section__heading > .workspace-section__toggle {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+/* Always on screen, whatever is open above it. */
+.finalize-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: var(--z-sticky);
+  flex: 0 0 auto;
+  margin-top: auto;
+  margin-bottom: 0;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  box-shadow: 0 -4px 12px rgba(16, 24, 40, 0.08);
+}
+
+/* -- the Objects list ----------------------------------------------------------- */
+.objects__heading {
+  margin: var(--space-3) 0 var(--space-1);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+}
+.objects__count { color: var(--muted); font-weight: var(--weight-normal); }
+.objects__item { align-items: center; }
+.objects__item.is-selected { background: var(--accent-soft); }
+.objects__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.objects__page { color: var(--muted); }
+.objects__actions { display: inline-flex; gap: var(--space-2); flex: 0 0 auto; }
+/* W5: the initials' bulk actions, their progress line and their report. */
+.objects__initials {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+.objects__initials .alert { margin: 0; width: 100%; }
+.objects__failures { margin: var(--space-1) 0 0; padding-left: 1.1em; font-size: var(--text-sm); }

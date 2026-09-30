@@ -1,0 +1,466 @@
+/* ==========================================================================
+   SignWithMe -- dashboard (home page)
+   --------------------------------------------------------------------------
+   Imported from `pages/Dashboard.tsx`, not from `index.css`, so this page can
+   be reworked without touching the shared design system. Everything here uses
+   the tokens declared in `index.css` (`--space-*`, `--text-*`, `--radius-*`,
+   `--shadow-*`, `--transition-*`, `--good-*` / `--warn-*` / `--bad-*`); no new
+   colour literal is introduced except the two neutral greys that already
+   appear there (`#eceff3`).
+
+   The list is a real `<table>` with its own class, deliberately NOT `.table`:
+   the shared `.table` gets `white-space: nowrap` + horizontal scroll below
+   760px, while this one turns into cards instead (see section 6).
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   1. Header & quick actions
+   -------------------------------------------------------------------------- */
+.dash__header {
+  align-items: flex-start;
+  margin-bottom: var(--space-5);
+}
+.dash__header h1 {
+  margin: 0;
+}
+.dash__subtitle {
+  margin: var(--space-1) 0 0;
+  color: var(--muted);
+  font-size: var(--text-base);
+  font-variant-numeric: tabular-nums;
+}
+.dash__quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.dash__alert {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+.dash__alert > span {
+  flex: 1 1 220px;
+}
+
+.dash__loading {
+  color: var(--muted);
+}
+
+/* --------------------------------------------------------------------------
+   2. Status filter chips
+   --------------------------------------------------------------------------
+   One chip per bucket, each carrying its own count. The buckets are mutually
+   exclusive, so "All" always equals the sum of the other six.
+   -------------------------------------------------------------------------- */
+.dash__filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.dash__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-1) var(--space-1) var(--space-3);
+  font-size: var(--text-base);
+}
+.dash__chip-label {
+  white-space: nowrap;
+}
+.dash__chip-count {
+  min-width: 24px;
+  padding: 0 6px;
+  border-radius: var(--radius-pill);
+  background: #eceff3;
+  color: var(--muted);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+/* The count pill carries the bucket's tone; the chip body stays neutral so a
+   row of six chips does not read as six alerts. */
+.dash__chip--good .dash__chip-count { background: var(--good-bg); color: var(--good); }
+.dash__chip--warn .dash__chip-count { background: var(--warn-bg); color: var(--warn); }
+.dash__chip--bad .dash__chip-count { background: var(--bad-bg); color: var(--bad); }
+.dash__chip--info .dash__chip-count { background: var(--accent-soft); color: var(--accent); }
+
+/* An empty bucket is still clickable (and still tab-reachable) but recedes. */
+.dash__chip[data-count='0'] { opacity: 0.55; }
+.dash__chip[data-count='0'].chip--active { opacity: 1; }
+
+/* --------------------------------------------------------------------------
+   3. Search & sort
+   -------------------------------------------------------------------------- */
+.dash__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-4);
+}
+.dash__search {
+  flex: 1 1 280px;
+  min-width: 200px;
+}
+.dash__sort {
+  flex: 0 0 auto;
+}
+
+/* "Needs attention only": a checkbox, not a seventh chip, because it cuts
+   across all six buckets instead of being one of them. Styled like a chip so
+   the control row still reads as one family. */
+.dash__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 0 0 auto;
+  padding: var(--space-1) var(--space-1) var(--space-1) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--text);
+  font-size: var(--text-base);
+  cursor: pointer;
+  user-select: none;
+  transition: background-color var(--transition-fast), border-color var(--transition-fast);
+}
+.dash__toggle:hover {
+  background: var(--surface-hover);
+}
+.dash__toggle input {
+  margin: 0;
+  cursor: pointer;
+  accent-color: var(--warn);
+}
+/* The keyboard ring belongs on the pill, not on the 13 px box inside it. */
+.dash__toggle:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+/* Driven by `data-on` from React rather than by `:has(input:checked)`, so the
+   "on" look never depends on a selector the target browser may not have. */
+.dash__toggle[data-on='1'] {
+  border-color: var(--warn-border);
+  background: var(--warn-bg);
+  color: var(--warn);
+}
+.dash__toggle-count {
+  min-width: 24px;
+  padding: 0 6px;
+  border-radius: var(--radius-pill);
+  background: #eceff3;
+  color: var(--muted);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-bold);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+.dash__toggle[data-count='0'] .dash__toggle-count {
+  opacity: 0.6;
+}
+.dash__toggle[data-on='1'] .dash__toggle-count {
+  background: var(--surface);
+  color: var(--warn);
+}
+/* `.field__input` is width:100% by design; the select only needs its content. */
+.dash__sort .field__input {
+  width: auto;
+  min-width: 160px;
+}
+
+/* --------------------------------------------------------------------------
+   4. Empty states
+   -------------------------------------------------------------------------- */
+.dash__empty {
+  background: var(--surface);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-lg);
+  padding: var(--space-8) var(--space-5);
+  text-align: center;
+}
+.dash__empty h2 {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-xl);
+}
+.dash__empty p {
+  margin: 0 auto var(--space-4);
+  max-width: 44ch;
+  color: var(--muted);
+  font-size: var(--text-base);
+}
+
+/* --------------------------------------------------------------------------
+   5. The contract table
+   -------------------------------------------------------------------------- */
+.dash__table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+.dash__table th,
+.dash__table td {
+  text-align: left;
+  padding: 10px var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+  vertical-align: middle;
+}
+.dash__table th {
+  font-size: var(--text-sm);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-caps);
+  color: var(--muted);
+  background: var(--surface-sunken);
+  font-weight: var(--weight-semibold);
+  border-bottom-color: var(--border);
+}
+.dash__table tbody tr {
+  transition: background-color var(--transition-fast);
+}
+.dash__table tbody tr:hover {
+  background: var(--surface-hover);
+}
+.dash__table tbody tr:last-child td {
+  border-bottom: none;
+}
+/* A row containing the keyboard focus is marked as a whole, so tabbing through
+   the actions never loses the reader's place. */
+.dash__row:focus-within {
+  background: var(--accent-soft);
+}
+
+/* The per-cell label only exists for the card layout (section 6). */
+.dash__label {
+  display: none;
+}
+.dash__value {
+  min-width: 0;
+}
+
+.dash__name {
+  display: block;
+  font-weight: var(--weight-semibold);
+}
+.dash__meta {
+  display: block;
+  font-size: var(--text-sm);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.dash__cell--date {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+/* `width: 1px` + `nowrap` = the column takes exactly the width its actions
+   need and the contractor column keeps the rest. */
+.dash__cell--actions {
+  width: 1px;
+  white-space: nowrap;
+}
+
+.dash__actions {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2) var(--space-3);
+}
+.dash__actions > * {
+  white-space: nowrap;
+}
+
+.dash__template {
+  /* The name is the readable part; the full template id lives in the tooltip. */
+  font-variant-numeric: normal;
+}
+
+/* --- trouble markers ------------------------------------------------------
+   Built only from the list payload: `error_message`, a `rejected`
+   `review_status`, the presence of `review_notes`, how long a contract has sat
+   in `uploaded` / `parsing`, and -- when the server sends them -- the stored
+   comparison's critical counts (`critical_fmcsa_count`,
+   `critical_inconsistency_count`, `critical_missing_count`), the engine's
+   `can_sign` verdict and `review_override`. Three tiers, not a flat list:
+
+     override  dotted rail, amber   -- a recorded decision, nothing to fix
+     warn      amber                -- overridable (empty required fields)
+     bad       red                  -- blocking until fixed or overridden
+     fmcsa     FILLED red           -- the one thing no override can waive
+
+   Only the FMCSA marker is filled, so it never reads as "one more red chip".
+*/
+.dash__flags {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  max-width: 240px;
+}
+.dash__flag {
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-sm);
+  border-left: 3px solid;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dash__flag--bad {
+  background: var(--bad-bg);
+  color: var(--bad);
+  border-left-color: var(--bad);
+}
+.dash__flag--warn {
+  background: var(--warn-bg);
+  color: var(--warn);
+  border-left-color: var(--warn-mark);
+}
+
+/* An FMCSA violation is the only finding a reviewer cannot wave through with
+   an override, so it is the only marker that inverts. `--surface` is the
+   page's white; no new colour literal is introduced. */
+.dash__flag--fmcsa {
+  background: var(--bad);
+  color: var(--surface);
+  border-left-color: var(--bad-hover);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-caps);
+  text-transform: uppercase;
+}
+
+/* The override marker states a decision that was already made. Same amber, but
+   a dotted rail instead of a solid one, so a row that is finished does not look
+   like a row that still needs work. */
+.dash__flag--override {
+  border-left-style: dotted;
+  font-weight: var(--weight-medium);
+}
+
+/* "Ready to sign" is neither good news nor a warning -- it is the accent, the
+   same colour the signing slots use. `index.css` has no `--info` badge. */
+.badge--info {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* --------------------------------------------------------------------------
+   6. Responsive: the table becomes one card per contract
+   --------------------------------------------------------------------------
+   Below 860px six columns cannot stay readable. `thead` is removed from the
+   accessibility tree and the per-cell `.dash__label` takes over, so exactly one
+   of the two is exposed at any width.
+   -------------------------------------------------------------------------- */
+@media (max-width: 860px) {
+  .dash__table,
+  .dash__table tbody,
+  .dash__table tr,
+  .dash__table td {
+    display: block;
+    width: 100%;
+  }
+  .dash__table {
+    border: none;
+    background: none;
+    box-shadow: none;
+    overflow: visible;
+  }
+  .dash__table thead {
+    display: none;
+  }
+  .dash__table tr {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    margin-bottom: var(--space-3);
+    padding: var(--space-2) 0;
+  }
+  .dash__table tbody tr:last-child td,
+  .dash__table td {
+    border-bottom: none;
+  }
+  .dash__table td {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-3);
+    padding: var(--space-1) var(--space-3);
+  }
+  .dash__label {
+    display: block;
+    flex: 0 0 108px;
+    font-size: var(--text-sm);
+    color: var(--muted);
+    font-weight: var(--weight-medium);
+  }
+  .dash__value {
+    flex: 1 1 auto;
+  }
+  /* Nothing to report: the row would be an empty "Needs attention —".
+     Specificity has to beat the `.dash__table td` rule above. */
+  .dash__table td.dash__cell--empty {
+    display: none;
+  }
+  .dash__table td.dash__cell--actions {
+    width: auto;
+    white-space: normal;
+    margin-top: var(--space-1);
+    padding-top: var(--space-2);
+    border-top: 1px solid var(--border-subtle);
+  }
+  .dash__actions {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+  .dash__flags {
+    max-width: none;
+  }
+  .dash__flag {
+    white-space: normal;
+  }
+}
+
+@media (max-width: 560px) {
+  .dash__header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .dash__quick .button {
+    flex: 1 1 auto;
+  }
+  .dash__sort,
+  .dash__search,
+  .dash__toggle {
+    flex: 1 1 100%;
+  }
+  .dash__sort .field__input {
+    width: 100%;
+  }
+  /* The count pill goes to the far end of the full-width pill. */
+  .dash__toggle > span:first-of-type {
+    flex: 1 1 auto;
+  }
+  /* The label column costs too much here; stack it above its value. */
+  .dash__table td {
+    flex-direction: column;
+    gap: 2px;
+  }
+  .dash__label {
+    flex: none;
+  }
+}

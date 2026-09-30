@@ -1,0 +1,294 @@
+/* ==========================================================================
+   F1b: the edit session and editing the PDF's own text (EDITOR-V2-PLAN §7).
+   Scoped under `.workspace`; the Sejda tokens come from `sejda.css`.
+   ========================================================================== */
+
+/* -- top bar: session group ------------------------------------------------ */
+.workspace .sj-topbar__session {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.workspace .sj-topbar__reason {
+  font-size: 12px;
+  color: #6b7280;
+  max-width: 260px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.workspace .sj-save-status {
+  font-size: 12px;
+  color: #6b7280;
+  min-width: 110px;
+  text-align: right;
+  white-space: nowrap;
+}
+.workspace .sj-save-status--saved { color: #15803d; }
+.workspace .sj-save-status--dirty,
+.workspace .sj-save-status--saving,
+.workspace .sj-save-status--committing { color: #92400e; }
+.workspace .sj-save-status--offline,
+.workspace .sj-save-status--conflict,
+.workspace .sj-save-status--error { color: #b91c1c; font-weight: 600; }
+.workspace .sj-btn--danger { background: #b91c1c; border-color: #b91c1c; color: #fff; }
+
+.workspace .sj-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.workspace .sj-banner__actions { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+.alert--info { background: #eff6ff; border: 1px solid #bfdbfe; color: #1e3a8a; }
+
+/* -- dialogs ------------------------------------------------------------------ */
+.sj-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(17, 24, 39, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.sj-modal {
+  background: #fff;
+  border-radius: 6px;
+  padding: 20px 22px;
+  max-width: 460px;
+  width: calc(100% - 32px);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25);
+  font-size: 14px;
+}
+.sj-modal__title { margin: 0 0 10px; font-size: 17px; }
+.sj-modal__hint { color: #4b5563; font-size: 13px; }
+.sj-modal__actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+
+/* -- the text layer ------------------------------------------------------------- */
+.tb-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+}
+.tb-block {
+  position: absolute;
+  margin: 0;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  background: transparent;
+  cursor: text;
+  pointer-events: auto;
+}
+.tb-block:hover { border-color: #0099ff; background: rgba(0, 153, 255, 0.06); }
+.tb-block--edited { border-style: dashed; border-color: rgba(0, 153, 255, 0.55); }
+.tb-block--locked { cursor: not-allowed; }
+.tb-block--locked:hover { border-color: #9ca3af; background: rgba(156, 163, 175, 0.12); }
+.tb-block--open { visibility: hidden; }
+
+.tb-mask {
+  position: absolute;
+  pointer-events: none;
+}
+.tb-pending { position: absolute; inset: 0; pointer-events: none; }
+.tb-pending__text {
+  position: absolute;
+  white-space: pre-wrap;
+  font-kerning: none;
+  pointer-events: none;
+}
+
+.tb-editor-frame {
+  position: absolute;
+  pointer-events: auto;
+  outline: 1px solid #0099ff;
+  outline-offset: 1px;
+  z-index: 4;
+}
+.tb-editor {
+  white-space: pre-wrap;
+  word-break: break-word;
+  outline: none;
+  caret-color: #0099ff;
+  cursor: text;
+  min-height: 1em;
+}
+.tb-editor__width {
+  position: absolute;
+  top: 50%;
+  right: -5px;
+  width: 8px;
+  height: 18px;
+  margin-top: -9px;
+  background: #0099ff;
+  border-radius: 2px;
+  cursor: ew-resize;
+}
+.tb-editor__move {
+  position: absolute;
+  left: -22px;
+  top: -2px;
+  width: 18px;
+  height: 18px;
+  line-height: 18px;
+  font-size: 13px;
+  text-align: center;
+  color: #fff;
+  background: #0099ff;
+  border-radius: 3px;
+  cursor: move;
+  user-select: none;
+}
+
+/* -- overflow ------------------------------------------------------------------- */
+.tb-overflow { position: absolute; inset: 0; pointer-events: none; }
+.tb-overflow__zone {
+  position: absolute;
+  border: 1.5px dashed #dc2626;
+  background: rgba(220, 38, 38, 0.06);
+}
+.tb-overflow__panel {
+  position: absolute;
+  z-index: 5;
+  pointer-events: auto;
+  background: #fff;
+  border: 1px solid #fca5a5;
+  border-radius: 4px;
+  padding: 8px 10px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
+  font-size: 12px;
+  max-width: 340px;
+}
+.tb-overflow__text { margin: 0 0 6px; color: #7f1d1d; }
+.tb-overflow__actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* -- the floating text toolbar ---------------------------------------------------- */
+.tb-toolbar {
+  position: absolute;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  background: #fff;
+  border: 1px solid #d0d0d0;
+  border-radius: 4px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
+  pointer-events: auto;
+  font: 13px/1.2 system-ui, sans-serif;
+  white-space: nowrap;
+}
+.tb-btn {
+  height: 30px;
+  min-width: 30px;
+  padding: 0 7px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  color: #1f2937;
+  cursor: pointer;
+  font: inherit;
+}
+.tb-btn:hover { background: #f3f4f6; }
+.tb-btn.is-on { background: #e0f2fe; border-color: #0099ff; color: #0369a1; }
+.tb-btn--danger { color: #b91c1c; }
+.tb-sep { width: 1px; height: 22px; background: #e5e7eb; margin: 0 3px; }
+.tb-size, .tb-color, .tb-font { position: relative; display: inline-flex; align-items: center; }
+.tb-size__input {
+  width: 42px;
+  height: 28px;
+  border: 1px solid #d0d0d0;
+  border-radius: 3px;
+  text-align: center;
+  font: inherit;
+}
+.tb-size__toggle { min-width: 20px; padding: 0 3px; }
+.tb-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin: 4px 0 0;
+  padding: 4px;
+  list-style: none;
+  background: #fff;
+  border: 1px solid #d0d0d0;
+  border-radius: 4px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
+  max-height: 260px;
+  overflow: auto;
+  z-index: 7;
+}
+.tb-menu__item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 4px 10px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+.tb-menu__item:hover, .tb-menu__item.is-current { background: #e0f2fe; }
+.tb-color__swatch {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 2px;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  vertical-align: middle;
+}
+.tb-font__button { max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
+.tb-font__menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 4px;
+  width: 250px;
+  padding: 6px;
+  background: #fff;
+  border: 1px solid #d0d0d0;
+  border-radius: 4px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
+  z-index: 7;
+}
+.tb-font__search {
+  width: 100%;
+  box-sizing: border-box;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid #d0d0d0;
+  border-radius: 3px;
+  font: inherit;
+}
+.tb-font__chip {
+  margin: 6px 0 2px;
+  padding: 3px 8px;
+  border-radius: 10px;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 11px;
+  display: inline-block;
+}
+.tb-font__list { list-style: none; margin: 6px 0 0; padding: 0; }
+.tb-font__option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 6px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  font-size: 15px;
+  cursor: pointer;
+}
+.tb-font__option:hover, .tb-font__option.is-current { background: #e0f2fe; }
+.tb-font__check { width: 14px; color: #0099ff; font-family: system-ui, sans-serif; }
+.tb-font__none { padding: 6px; color: #6b7280; }
+
+/* The editor layer takes the text tools' place; its frames take the pointer. */
+.workspace--text-tools .pdf-page:not(.pdf-page--rotated) .tb-block { pointer-events: auto; }

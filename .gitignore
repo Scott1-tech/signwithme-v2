@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+
+# Node
+node_modules/
+dist/
+
+# Local config and artefacts
+.env
+.env.*
+!.env.example
+*.local
+.DS_Store
+*.tsbuildinfo
+
+# Secrets and keys
+*.pem
+*.key
+*.pfx
+
+# Databases (real contract data / PII) and their backups
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.db.bak*
+local.db*
+
+# Uploaded contracts, signatures and generated PDFs (real data)
+backend/storage/
+backend/storage_*/
+storage/
+
+# Staging copies, test run artefacts, logs
+_staging/
+tests/acceptance/runs/
+*.log
+.local_run*
+.vite-dev*

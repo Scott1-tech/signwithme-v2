@@ -1,0 +1,422 @@
+/* ==========================================================================
+   Signing step -- D6b: the signature chooser, the on-page slot panel and the
+   per-page slot cards.
+   --------------------------------------------------------------------------
+   Imported by `components/SignatureModal.tsx`, so it lands after `index.css`
+   and `viewer.css` in both dev and the bundle: where a rule here overlaps one
+   of theirs, this file wins on equal specificity.
+
+   Two things this file is NOT allowed to do:
+     1. Move or resize anything the placement maths owns (`.pdf-page`,
+        `.slot`, `.placed-*`). `.slot--active` therefore uses `outline`, which
+        never takes part in the box, and `.slot-tools` is positioned OUTSIDE
+        the slot box it belongs to -- see `SlotToolbar.tsx` for why.
+     2. Invent colours or sizes. Everything below is a token from `index.css`.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   1. The one signature modal (Saved / Draw / Upload)
+   -------------------------------------------------------------------------- */
+.sign-modal {
+  /* A tab switch must not make the dialog jump: the body reserves the height
+     of the tallest pad, and only scrolls when the viewport is genuinely short. */
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: min(600px, 92vw);
+}
+
+.sign-modal__head { margin-bottom: 0; }
+
+.sign-modal__tabs {
+  display: flex;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.sign-tab {
+  flex: 1 1 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--button-pad-y) var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color var(--transition-fast), color var(--transition-fast),
+              border-color var(--transition-fast);
+}
+.sign-tab:hover { background: var(--surface-hover); color: var(--text); }
+.sign-tab[aria-selected='true'] {
+  background: var(--surface);
+  border-color: var(--border);
+  color: var(--accent);
+  box-shadow: var(--shadow-sm);
+}
+.sign-tab:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.sign-tab__count {
+  min-width: 18px;
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Every tab body stays mounted and is hidden with `hidden`, so a half-drawn
+   signature or a chosen file survives a trip to another tab. */
+.sign-panel[hidden] { display: none; }
+.sign-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-height: 210px;
+}
+
+/* --- Saved ---------------------------------------------------------------- */
+.sign-library {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 46vh;
+  overflow-y: auto;
+}
+
+.sign-library__button {
+  width: 100%;
+  display: block;
+  padding: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+.sign-library__button:hover { border-color: var(--accent); box-shadow: var(--shadow-md); }
+.sign-library__button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.sign-library__preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 84px;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  background: repeating-conic-gradient(#eceff3 0 25%, #fff 0 50%) 0 0 / 16px 16px;
+}
+.sign-library__preview img { max-width: 100%; max-height: 100%; }
+
+.sign-library__name {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  font-weight: var(--weight-medium);
+  font-size: var(--text-base);
+}
+
+.sign-library__empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 150px;
+  padding: var(--space-4);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+  color: var(--muted);
+  font-size: var(--text-base);
+  text-align: center;
+}
+
+/* --- Draw / Upload -------------------------------------------------------- */
+.sign-panel .signature-pad { display: block; width: 100%; }
+.sign-panel .signature-pad__canvas { margin: 0 auto; }
+
+/* --------------------------------------------------------------------------
+   2. The on-page mini panel
+   --------------------------------------------------------------------------
+   POSITION CONTRACT -- do not "tidy" this away. The panel is anchored to the
+   slot's own box but is drawn entirely OUTSIDE it (above, or below when the
+   slot sits at the very top of a page). The slot box therefore keeps every
+   pixel of its own surface, which is what `useSlotDrag` presses on: the 3 px
+   threshold, the pointer capture and the double-click reset all still start
+   on the slot itself, never on a button that happens to be over it.
+   -------------------------------------------------------------------------- */
+.slot-tools {
+  position: absolute;
+  z-index: var(--z-raised);
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 3px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-md);
+  white-space: nowrap;
+  /* The panel is chrome, not part of the document: a drag that starts here
+     would be meaningless, and a text selection worse. */
+  user-select: none;
+  touch-action: auto;
+  cursor: default;
+}
+.slot-tools--above { transform: translateY(calc(-100% - 6px)); }
+.slot-tools--below { transform: translateY(6px); }
+
+.slot-tools__button {
+  padding: 3px var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-normal);
+  cursor: pointer;
+  transition: background-color var(--transition-fast), color var(--transition-fast);
+}
+.slot-tools__button:hover { background: var(--surface-hover); border-color: var(--border); }
+.slot-tools__button:disabled { opacity: 0.45; cursor: not-allowed; }
+.slot-tools__button--primary { background: var(--accent); color: #fff; }
+.slot-tools__button--primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+.slot-tools__button--danger { color: var(--bad); }
+.slot-tools__button--danger:hover { background: var(--bad-bg); border-color: var(--bad-border); }
+
+.slot-tools__date {
+  padding: 2px var(--space-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--text-sm);
+}
+.slot-tools__date:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 2px var(--accent-soft); }
+
+.slot-tools__divider { width: 1px; align-self: stretch; background: var(--border-subtle); }
+
+/* The slot the panel is currently about. `outline` is deliberate: it never
+   takes part in the box, so the geometry the checks read stays exact. */
+.slot--active { outline: var(--focus-width) solid var(--accent); outline-offset: 1px; }
+
+/* --------------------------------------------------------------------------
+   2b. The corner resize handle (`components/SlotResizeHandle.tsx`)
+   --------------------------------------------------------------------------
+   POSITION CONTRACT -- the same one `.slot-tools` keeps, for the same reason.
+   The handle is a sibling of the mark inside `.pdf-overlay`, centred on its
+   TOP-RIGHT corner, so:
+     * the BOTTOM-LEFT corner -- the anchor `data-left-pt` / `data-bottom-pt`
+       advertise -- carries no chrome at all and never moves when the size
+       changes;
+     * the middle of the slot box stays the slot's own surface, which is what
+       `useSlotDrag` presses on and what `tests/ui/_harness.py` aims at.
+   Nothing here may take part in the placement maths: the handle is chrome,
+   positioned from the mark's box, and the mark never reads it back.
+   -------------------------------------------------------------------------- */
+.slot-resize {
+  position: absolute;
+  z-index: var(--z-raised);
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  padding: 0;
+  /* Centred on the corner: half over the ink, half outside it. */
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  cursor: nwse-resize;
+  /* A resize is a gesture, never a scroll or a text selection. */
+  touch-action: none;
+  user-select: none;
+}
+.slot-resize:hover,
+.slot-resize.is-resizing { background: var(--accent); }
+.slot-resize:hover .slot-resize__grip,
+.slot-resize.is-resizing .slot-resize__grip { background: #fff; }
+.slot-resize:focus-visible {
+  outline: var(--focus-width) solid var(--accent);
+  outline-offset: var(--focus-offset);
+}
+.slot-resize:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* The two diagonal ticks, drawn with a gradient so the button keeps its size. */
+.slot-resize__grip {
+  width: 8px;
+  height: 8px;
+  background: var(--accent);
+  clip-path: polygon(100% 0, 100% 100%, 0 100%, 0 70%, 70% 70%, 70% 0);
+  pointer-events: none;
+}
+
+/* The live percentage, parked beside the handle so it never covers the mark. */
+.slot-resize__value {
+  position: absolute;
+  left: calc(100% + 4px);
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 0 4px;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
+  line-height: 16px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--transition-fast);
+}
+.slot-resize:hover .slot-resize__value,
+.slot-resize:focus-visible .slot-resize__value,
+.slot-resize--own .slot-resize__value,
+.slot-resize.is-resizing .slot-resize__value { opacity: 1; }
+
+/* What an EMPTY slot will be filled with, shown only while it is resized: the
+   slot box itself never changes size, so without this the gesture would have
+   no picture at all. Never `.placed-signature` -- that class is geometry the
+   checks read. */
+.slot-resize-ghost {
+  position: absolute;
+  border: 1px dashed var(--accent);
+  background: var(--accent-soft);
+  pointer-events: none;
+}
+
+/* --------------------------------------------------------------------------
+   3. Slot cards, grouped by page
+   -------------------------------------------------------------------------- */
+.slot-group { border-bottom: 1px solid var(--border-subtle); }
+.slot-group:last-child { border-bottom: none; }
+
+.slot-group__header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  border: none;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-weight: var(--weight-semibold);
+  font-size: var(--text-base);
+  text-align: left;
+  cursor: pointer;
+}
+.slot-group__header:hover { color: var(--accent); }
+
+.slot-group__caret {
+  display: inline-block;
+  width: 12px;
+  color: var(--muted);
+  transition: transform var(--transition-fast);
+}
+.slot-group__header[aria-expanded='false'] .slot-group__caret { transform: rotate(-90deg); }
+
+.slot-group__tally {
+  margin-left: auto;
+  font-weight: var(--weight-normal);
+  font-size: var(--text-sm);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.slot-group__tally--done { color: var(--good); }
+
+.slot-group__body[hidden] { display: none; }
+.slot-group__body { padding-bottom: var(--space-2); }
+
+.slot-card__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.slot-card__jump {
+  flex: 0 0 auto;
+  padding: 2px var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--accent);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: background-color var(--transition-fast), border-color var(--transition-fast);
+}
+.slot-card__jump:hover { background: var(--accent-soft); border-color: var(--accent); }
+
+.slot-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: var(--text-base);
+}
+.slot-row:last-child { border-bottom: none; }
+.slot-row__name { flex: 1 1 auto; min-width: 0; }
+.slot-row__meta { display: block; font-size: var(--text-sm); color: var(--muted); }
+.slot-row__status { flex: 0 0 auto; font-size: var(--text-sm); color: var(--muted); }
+.slot-row__status--done { color: var(--good); }
+
+/* --------------------------------------------------------------------------
+   3b. The size control in "Position & appearance"
+   --------------------------------------------------------------------------
+   The keyboard equivalent of the corner handle. It lives beside the ◀▶▲▼
+   steppers of the same row and borrows their look from `index.css`; only what
+   is new to it is written here.
+   -------------------------------------------------------------------------- */
+.stepper--scale { gap: 2px; }
+.stepper--scale .stepper__value { min-width: 62px; }
+/* A slot following the global slider says so ("100% auto") in muted type; one
+   with a size of its own is stated plainly, because the slider no longer
+   moves it. */
+.stepper__value--own { color: var(--accent); font-weight: var(--weight-medium); }
+.stepper__button--wide { width: auto; padding: 0 var(--space-1); font-size: var(--text-2xs); }
+.hint--tight { margin-top: 0; }
+
+/* "Move together": one ◀▲▼▶ pad per group (signatures / dates / everything). */
+.layout-group {
+  margin-bottom: var(--space-2); padding-bottom: 6px; border-bottom: 1px solid var(--border);
+}
+.layout-group h3 {
+  margin: var(--space-1) 0; font-size: var(--text-sm); text-transform: uppercase;
+  letter-spacing: var(--tracking-caps); color: var(--muted);
+}
+.shift-pad { gap: 2px; }
+
+/* --------------------------------------------------------------------------
+   4. Narrow screens
+   -------------------------------------------------------------------------- */
+@media (max-width: 760px) {
+  .sign-modal { width: min(600px, 96vw); }
+  .sign-modal__tabs { gap: 0; }
+  .sign-tab { padding: var(--button-pad-y) var(--space-1); font-size: var(--text-base); }
+  .sign-tab__count { display: none; }
+  .sign-library { grid-template-columns: 1fr; }
+  .sign-panel .signature-pad__canvas { max-width: 100%; }
+}

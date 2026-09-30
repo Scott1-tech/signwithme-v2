@@ -1,0 +1,495 @@
+/* ==========================================================================
+   Continuous-scroll PDF viewer
+   --------------------------------------------------------------------------
+   Loaded after `index.css` (see `main.tsx`), so the rules here win where they
+   overlap. Everything in this file exists for one reason: the page list, not
+   the surrounding pane, has to be the scrolling element, and each page has to
+   occupy exactly the space its own size asks for even before it is painted.
+
+   GEOMETRY CONTRACT -- do not "tidy" these away:
+   `.pdf-page` is the positioning context for every mark the overlay draws and
+   the browser checks in `tests/ui/` read the render scale straight off it
+   (`rect.width / 612`). Its border box must therefore stay equal to
+   `pageWidth x scale`: no border, no padding, no transform.
+
+   The one exception is a page the reader has TURNED (`.pdf-page--rotated`):
+   its box is the turned size, so `rect.width / 612` is the wrong number there
+   and the checks read the scale off an upright page instead. The turn itself
+   is never on `.pdf-page` -- it is on the two layers inside it, so the box
+   stays a plain, untransformed rectangle that the scroll machinery and the
+   `IntersectionObserver` can go on measuring.
+   ========================================================================== */
+
+/* The document pane becomes a column so the page list can own the scrolling
+   instead of the pane. Alerts above the viewer keep their natural height. */
+.review__document {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.review__document > *:not(.pdf-viewer) { flex: 0 0 auto; }
+.review__document > .pdf-viewer {
+  flex: 1 1 auto;
+  min-height: 320px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Thumbnail strip + document, side by side, each scrolling on its own. The
+   descendant selector (not `>`) is deliberate: the stage sits inside
+   `.pdf-body` and must still beat `.pdf-stage { display: flex }` in
+   `index.css`, which would otherwise centre it and break nothing visibly
+   until a zoomed page had to be scrolled sideways. */
+.pdf-body {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  gap: var(--space-2, 8px);
+}
+
+/* `PdfViewer`'s `floating` slot: OVER the top of the page area, out of the
+   layout, so nothing shown or hidden here can move a page (fix 2026-09-27).
+   Only its content takes the pointer; the page around it stays reachable. */
+.pdf-body__float {
+  position: absolute;
+  top: var(--space-2, 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  /* Over the pages' own marks (≤ --z-raised), UNDER the toolbar (--z-sticky)
+     and its drop-down lists, which hang over the pages. */
+  z-index: calc(var(--z-sticky, 20) - 1);
+  width: min(640px, calc(100% - 32px));
+  pointer-events: none;
+}
+.pdf-body__float > * > * { pointer-events: auto; }
+
+/* The scrolling element. `overscroll-behavior` keeps a flick at the end of the
+   document from scrolling the page behind it. */
+.pdf-viewer .pdf-stage {
+  display: block;
+  flex: 1 1 auto;
+  /* Without `min-width: 0` a wide page would push the strip off the pane
+     instead of being scrolled inside the stage. */
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  background: var(--surface-sunken, #f1f3f5);
+  border-radius: var(--radius-md, 6px);
+}
+
+/* `width: fit-content` + `min-width: 100%` centres the pages while they are
+   narrower than the pane and still lets a zoomed-in page be scrolled to on
+   BOTH sides -- plain `align-items: center` clips the left edge away. */
+.pdf-pages {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3, 12px);
+  width: fit-content;
+  min-width: 100%;
+  padding: var(--space-2, 8px) 0;
+}
+
+.pdf-page {
+  position: relative;
+  flex: none;
+  box-sizing: border-box;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  background: #fff;
+  box-shadow: 0 1px 6px rgba(16, 24, 40, 0.16);
+}
+
+/* Which page the toolbar is counting. An outline/box-shadow never takes part
+   in the box, so the scale the checks read off `.pdf-page` stays exact. */
+.pdf-page--current {
+  box-shadow: 0 1px 6px rgba(16, 24, 40, 0.16), 0 0 0 2px var(--accent, #1f6feb);
+}
+
+/* Presented at the page's CSS size; the bitmap behind it is at device
+   resolution, and is dropped to 0 x 0 when the page leaves the render window.
+   A freed canvas simply draws nothing, so the placeholder shows through. */
+.pdf-canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* What a page shows while it is only space: its own number, nothing else. */
+.pdf-page__placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted, #5c6b7a);
+  font-size: var(--text-lg, 16px);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  user-select: none;
+}
+.pdf-page[data-rendered] .pdf-page__placeholder { display: none; }
+
+.pdf-overlay { position: absolute; inset: 0; pointer-events: none; }
+.pdf-overlay > * { pointer-events: auto; }
+
+/* Every page carries its own dates layer now (one per page, not one shared),
+   so the rule has to survive being repeated. */
+.pdf-overlay > .placed-dates {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.pdf-status { margin: var(--space-2, 8px); }
+
+/* ==========================================================================
+   Find in document (`components/PdfSearchBox.tsx`, `PdfSearchMarks.tsx`)
+   --------------------------------------------------------------------------
+   The marks layer is a sibling of `.pdf-overlay` and comes BEFORE it, so the
+   overlay paints on top: a highlight can never hide a slot box or a placed
+   signature. Nothing in the layer takes a pointer event, so the drag, the
+   slot click and click-to-place are all untouched by a search being open.
+   ========================================================================== */
+.pdf-search {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1, 4px);
+  margin-left: var(--space-2, 8px);
+}
+
+.pdf-search__input {
+  width: 180px;
+  min-width: 90px;
+  padding: var(--space-1, 4px) 8px;
+  border: 1px solid var(--border, #d9dee5);
+  border-radius: var(--radius-md, 6px);
+  background: var(--surface, #fff);
+  color: var(--text, #16202c);
+  font: inherit;
+  font-size: var(--text-base, 13px);
+}
+.pdf-search__input:focus {
+  border-color: var(--accent, #1f6feb);
+  outline: none;
+  box-shadow: 0 0 0 2px var(--accent-soft, rgba(31, 111, 235, 0.16));
+}
+/* `type="search"` brings its own ✕ in Chromium, immediately beside ours --
+   two identical buttons, one of which does not put the focus back. Keep the
+   type (it is what a search field *is*, for assistive technology) and drop the
+   duplicate control. */
+.pdf-search__input::-webkit-search-cancel-button { display: none; }
+
+.pdf-search__count {
+  min-width: 42px;
+  color: var(--muted, #5c6b7a);
+  font-size: var(--text-sm, 12px);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+/* Nothing found is a result, not an error: muted, never red. */
+.pdf-search__count--empty { color: var(--muted, #5c6b7a); }
+
+/* The layer itself is only a coordinate space; it must never eat a click. */
+.pdf-search-layer {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.pdf-search-hit {
+  position: absolute;
+  display: block;
+  pointer-events: none;
+  /* Multiply keeps the glyphs underneath readable through the mark, the way
+     a real highlighter does; a flat fill would grey the text out. */
+  mix-blend-mode: multiply;
+  background: rgba(255, 214, 0, 0.55);
+  border-radius: 1px;
+}
+
+/* «Highlight all matches» (W3): turns the marks into highlight annotations. */
+.pdf-search__highlight-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+.pdf-search__highlight-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: rgba(250, 204, 21, 0.75);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15);
+}
+
+/* Where the reader is now: a different hue, not merely a brighter yellow,
+   because "current" has to be findable in a page full of matches. */
+.pdf-search-hit--active {
+  background: rgba(255, 138, 0, 0.75);
+  box-shadow: 0 0 0 1px rgba(154, 74, 0, 0.9);
+}
+
+/* ==========================================================================
+   The page's own text (plan §2.4 layer 3, §3; `workspace/text/PdfTextLayer.tsx`)
+   --------------------------------------------------------------------------
+   Between the search marks and `.pdf-overlay`. Mounted only while a tool
+   that reads the page's text is armed (edit-text), only on the render
+   window's pages and never on a turned page. By default nothing in it takes
+   a pointer event; `workspace.css` turns the LINES on for the text tools.
+
+   `.textLayer` rules are pdf.js 4.8.69's own (`pdfjs-dist/web/pdf_viewer.css`),
+   scoped under `.pdf-text-layer` so no other `.textLayer` is touched. The
+   spans are positioned in % of the page and sized in `var(--scale-factor)`
+   (CSS px per pt, set by the component), so a zoom moves one variable.
+   ========================================================================== */
+.pdf-text-layer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.pdf-text-layer .textLayer {
+  position: absolute;
+  text-align: initial;
+  inset: 0;
+  overflow: clip;
+  opacity: 1;
+  line-height: 1;
+  -webkit-text-size-adjust: none;
+  text-size-adjust: none;
+  forced-color-adjust: none;
+  transform-origin: 0 0;
+  caret-color: CanvasText;
+  z-index: 0;
+  pointer-events: none;
+}
+.pdf-text-layer .textLayer :is(span, br) {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+}
+.pdf-text-layer .textLayer > :not(.markedContent),
+.pdf-text-layer .textLayer .markedContent span:not(.markedContent) {
+  z-index: 1;
+}
+.pdf-text-layer .textLayer span.markedContent {
+  top: 0;
+  height: 0;
+}
+.pdf-text-layer .textLayer ::selection {
+  background: rgba(0, 0, 255, 0.25);
+}
+.pdf-text-layer .textLayer br::selection {
+  background: transparent;
+}
+
+/* pdf.js measures glyph widths on a canvas it appends to <body>; it must
+   never be seen (pdf_viewer.css ships the same rule). */
+.hiddenCanvasElement {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+/* One transparent box per merged LINE, over its ink. Hover frames it (the
+   Sejda way): an outline, outside the box, so it still shows around a line
+   that is already under a whiteout. */
+.pdf-text-layer__lines {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+}
+.pdf-text-line {
+  position: absolute;
+  display: block;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 1px;
+  background: transparent;
+  cursor: text;
+  pointer-events: none;
+}
+.pdf-text-line:hover,
+.pdf-text-line:focus-visible {
+  outline: 1.5px solid var(--accent, #1f6feb);
+  outline-offset: 2px;
+  background: rgba(31, 111, 235, 0.07);
+}
+
+/* ==========================================================================
+   Rotated view (view only -- the file is never touched)
+   --------------------------------------------------------------------------
+   Only the two layers inside the page turn; the page box itself stays an
+   untransformed rectangle of the turned size. The shield is what makes a
+   turned page's marks inert: it is the last child of `.pdf-overlay` and sits
+   above every one of them, so a drag or a slot click cannot reach through.
+   `pointer-events` on the overlay would not have done it -- a child that sets
+   `pointer-events: auto` (the draggable signatures and dates do) is hittable
+   again regardless of its parent.
+   ========================================================================== */
+.pdf-page--rotated > .pdf-overlay,
+.pdf-page--rotated > .pdf-search-layer {
+  right: auto;
+  bottom: auto;
+  transform-origin: 0 0;
+}
+
+.pdf-overlay__shield {
+  position: absolute;
+  inset: 0;
+  display: block;
+  /* Above `.slot-tools` (`--z-raised: 10`), which is positioned outside its
+     slot and would otherwise stay clickable. */
+  z-index: 30;
+  background: transparent;
+  cursor: default;
+}
+
+/* ROTFIX: the server's marks (issues, slots, signatures) while a draft turns
+   their page -- turned with it by `frameLayerStyle`, and inert: `!important`
+   because several of them set `pointer-events: auto` themselves (see above). */
+.pdf-overlay > .pdf-overlay__frame { pointer-events: none; }
+.pdf-overlay__frame,
+.pdf-overlay__frame * { pointer-events: none !important; }
+
+.pdf-toolbar__rotate.is-rotated {
+  background: var(--accent-soft, rgba(31, 111, 235, 0.08));
+  border-color: var(--accent, #1f6feb);
+  color: var(--accent, #1f6feb);
+}
+
+.pdf-toolbar__rotation {
+  color: var(--accent, #1f6feb);
+  font-size: var(--text-sm, 12px);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Same palette as `.alert--warn` in `index.css`, at toolbar size: it belongs
+   to the viewer chrome, not to the page's list of blocking problems. */
+.pdf-rotation-note {
+  flex: 0 0 auto;
+  margin: 0 0 var(--space-2, 8px);
+  padding: var(--space-1, 4px) var(--space-2, 8px);
+  border: 1px solid var(--warn-border, #ead9a8);
+  border-radius: var(--radius-md, 6px);
+  background: var(--warn-bg, #fff6e0);
+  color: var(--warn, #9a6700);
+  font-size: var(--text-sm, 12px);
+}
+
+/* ==========================================================================
+   Page thumbnails (`components/PdfThumbnails.tsx`)
+   --------------------------------------------------------------------------
+   A navigation strip, nothing more: no geometry here is ever read back as
+   PDF points, so unlike `.pdf-page` these boxes are free to have padding and
+   borders. The one number that must agree with the component is the 120 px
+   canvas width (`THUMB_WIDTH`), which is why the frame's size is set inline
+   from the page's own aspect ratio rather than guessed here.
+   ========================================================================== */
+.pdf-thumbs {
+  flex: 0 0 auto;
+  display: flex;
+  min-height: 0;
+  background: var(--surface, #fff);
+  border: 1px solid var(--border, #d9dee5);
+  border-radius: var(--radius-md, 6px);
+}
+
+.pdf-thumbs__list {
+  /* The strip is its own scroll root (the `IntersectionObserver` uses it), and
+     the offset parent the auto-scroll measures against. */
+  position: relative;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  padding: var(--space-2, 8px);
+}
+
+.pdf-thumb {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1, 4px);
+  padding: var(--space-1, 4px);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md, 6px);
+  background: none;
+  color: var(--muted, #5c6b7a);
+  font: inherit;
+  font-size: var(--text-xs, 11px);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: background-color var(--transition-fast, 90ms ease),
+              border-color var(--transition-fast, 90ms ease),
+              color var(--transition-fast, 90ms ease);
+}
+.pdf-thumb:hover { background: var(--surface-hover, #f4f6f9); }
+.pdf-thumb:active { background: var(--surface-active, #e9edf2); }
+.pdf-thumb:focus-visible {
+  outline: var(--focus-width, 2px) solid var(--focus-color, #1f6feb);
+  outline-offset: var(--focus-offset, 2px);
+}
+
+/* Where the reader is. The border is on the button, never on the frame, so
+   the canvas keeps the exact size the component asked for. */
+.pdf-thumb--current {
+  border-color: var(--accent, #1f6feb);
+  background: var(--accent-soft, rgba(31, 111, 235, 0.08));
+  color: var(--text, #16202c);
+  font-weight: var(--weight-semibold, 600);
+}
+
+/* Sized inline (page aspect ratio); this is only the paper under the canvas,
+   so a thumbnail that has not been drawn yet is still a page-shaped box. */
+.pdf-thumb__frame {
+  display: block;
+  position: relative;
+  background: #fff;
+  border: 1px solid var(--border-subtle, #e6eaee);
+  box-shadow: var(--shadow-sm, 0 1px 2px rgba(16, 24, 40, 0.06));
+  overflow: hidden;
+}
+
+/* Presented at the frame's CSS size; the bitmap behind it is at device
+   resolution and is dropped to 0 x 0 when the thumbnail leaves the strip's
+   window -- a freed canvas then simply draws nothing over the paper. */
+.pdf-thumb__canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.pdf-toolbar__thumbs.is-open {
+  background: var(--accent-soft, rgba(31, 111, 235, 0.08));
+  border-color: var(--accent, #1f6feb);
+  color: var(--accent, #1f6feb);
+}
+
+/* Narrow screens: the strip starts folded away (`PdfViewer.tsx`), and when it
+   is opened it gives up some width rather than squeezing the document. */
+@media (max-width: 1024px) {
+  .pdf-thumbs__list { padding: var(--space-1, 4px); }
+  .pdf-thumb__label { display: none; }
+}

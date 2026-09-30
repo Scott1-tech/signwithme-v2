@@ -1,0 +1,28 @@
+# Development overrides: live reload, source mounted, infra ports on localhost.
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+# The base file is the production configuration; nothing here should be used to
+# serve real contracts.
+
+services:
+  postgres:
+    ports:
+      - "127.0.0.1:5432:5432"
+
+  redis:
+    ports:
+      - "127.0.0.1:6379:6379"
+
+  minio:
+    ports:
+      - "127.0.0.1:9000:9000"
+
+  backend:
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    environment:
+      DEBUG: "true"
+    volumes:
+      - ./backend:/app
+
+  worker:
+    volumes:
+      - ./backend:/app

@@ -1,0 +1,81 @@
+# Overrides for a Google Cloud e2-micro (1 vCPU, 1 GB RAM) free-tier instance.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.gcp.yml up -d
+#
+# 1 GB is genuinely tight, so this file does three things: caps each service so
+# one of them cannot starve the others, drops every worker count to 1, and tunes
+# Postgres down from defaults sized for a much larger machine. Run
+# scripts/gcp-setup.sh first -- swap is not optional here.
+#
+# The caps below total ~824 MB, deliberately leaving ~180 MB for the kernel, the
+# Docker daemon, sshd and Tailscale. Limits are ceilings rather than
+# reservations, so summing them to the full 1 GB would look fine until the API
+# streamed a PDF while the worker parsed a 40-page template -- and then the OOM
+# killer would pick a container for you.
+
+services:
+  postgres:
+    # Defaults assume far more RAM than this machine has.
+    command: >
+      postgres
+      -c shared_buffers=64MB
+      -c effective_cache_size=192MB
+      -c work_mem=4MB
+      -c maintenance_work_mem=32MB
+      -c max_connections=20
+      -c wal_buffers=4MB
+    deploy:
+      resources:
+        limits:
+          # shared_buffers counts against this, so it stays well under the cap.
+          memory: 200M
+
+  redis:
+    # Celery's queue only ever holds a handful of small task messages.
+    command: ["redis-server", "--maxmemory", "32mb", "--maxmemory-policy", "allkeys-lru", "--save", ""]
+    deploy:
+      resources:
+        limits:
+          memory: 32M
+
+  backend:
+    # One worker. Two would double the resident cost of pdfplumber and reportlab
+    # for a deployment serving one person. The headroom matters here: finalising
+    # a contract builds the whole PDF in this process, not in the worker.
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+    environment:
+      STORAGE_BACKEND: local
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  worker:
+    # Concurrency 1, and recycled often: parsing a 40-page PDF spikes memory,
+    # and a long-lived worker process never gives that back to the OS.
+    command:
+      - celery
+      - -A
+      - app.workers.celery_app
+      - worker
+      - --loglevel=info
+      - --concurrency=1
+      - --max-tasks-per-child=8
+      - --without-gossip
+      - --without-mingle
+      - --without-heartbeat
+    environment:
+      STORAGE_BACKEND: local
+    deploy:
+      resources:
+        limits:
+          # The largest share: parsing a 40-page template is the heaviest thing
+          # the system does. A task that exceeds this is killed on its own
+          # rather than taking the machine down with it.
+          memory: 288M
+
+  frontend:
+    deploy:
+      resources:
+        limits:
+          memory: 32M

@@ -1,0 +1,262 @@
+/* ==========================================================================
+   F2 (EDITOR-V2-PLAN §7.2-7.4): the rest of the editor's interface -- text
+   boxes, stamps, links, redaction, removed pictures, the page tools, the
+   menus' extras and the dialogs. Scoped to `.workspace` like `sejda.css`
+   (the dialogs render inside it too).
+   ========================================================================== */
+
+/* -- the text box editor ------------------------------------------------- */
+.workspace .swm-textbox-editor {
+  position: absolute;
+  z-index: 6;
+  box-sizing: content-box;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  outline: 1px dashed var(--sj-accent, #0099ff);
+  outline-offset: 2px;
+  background: rgba(255, 255, 255, 0.85);
+  resize: none;
+  overflow: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  font-kerning: none;
+  pointer-events: auto;
+}
+.workspace .swm-textbox-editor.is-invalid { outline-color: #dc2626; }
+
+/* -- hide annotations (screen only) -------------------------------------- */
+.workspace.workspace--markup-hidden .swm-ann-layer,
+.workspace.workspace--markup-hidden .swm-ann,
+.workspace.workspace--markup-hidden .swm-ann-handle,
+.workspace.workspace--markup-hidden .swm-whiteout-layer,
+.workspace.workspace--markup-hidden [data-testid^='whiteout-layer-'] {
+  visibility: hidden;
+}
+
+/* -- links while the Links tool is armed ---------------------------------- */
+.workspace .ws-links { position: absolute; inset: 0; pointer-events: none; z-index: 5; }
+.workspace .ws-link {
+  position: absolute;
+  padding: 0;
+  border: 1.5px solid var(--sj-accent, #0099ff);
+  border-radius: 2px;
+  background: rgba(0, 153, 255, 0.12);
+  cursor: move;
+  pointer-events: auto;
+}
+.workspace .ws-link--new { border-style: dashed; }
+.workspace .ws-link:hover,
+.workspace .ws-link:focus-visible { background: rgba(0, 153, 255, 0.22); }
+.workspace .ws-link__grip {
+  position: absolute;
+  right: -5px;
+  bottom: -5px;
+  width: 10px;
+  height: 10px;
+  border: 1px solid #fff;
+  background: var(--sj-accent, #0099ff);
+  cursor: nwse-resize;
+}
+.workspace .ws-capture__link { fill: rgba(0, 153, 255, 0.12); stroke: #0099ff; stroke-dasharray: 4 3; }
+.workspace .ws-capture__redact { fill: rgba(0, 0, 0, 0.55); stroke: #000; }
+
+/* -- pictures of the PDF (Delete original image) --------------------------- */
+.workspace .ws-page-images { position: absolute; inset: 0; pointer-events: none; z-index: 5; }
+.workspace .ws-page-image {
+  position: absolute;
+  padding: 0;
+  border: 2px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  pointer-events: auto;
+}
+.workspace .ws-page-image:hover,
+.workspace .ws-page-image:focus-visible {
+  border-color: #dc2626;
+  background: rgba(220, 38, 38, 0.12);
+}
+
+/* -- what the draft will do (until saved) -------------------------------- */
+.workspace .ws-pending-ops { position: absolute; inset: 0; pointer-events: none; z-index: 4; }
+.workspace .ws-redact-pending { position: absolute; background: #000; pointer-events: none; }
+.workspace .ws-image-removed {
+  position: absolute;
+  border: 1px dashed #dc2626;
+  background: repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.85) 0 6px, rgba(220, 38, 38, 0.2) 6px 12px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+.workspace .ws-image-removed__label { font: 600 11px/1.2 system-ui, sans-serif; color: #b91c1c; background: #fff; padding: 1px 4px; }
+.workspace .ws-pending-ops__drop {
+  position: absolute;
+  top: -10px;
+  right: -10px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1px solid #d0d0d0;
+  background: #fff;
+  color: #333;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+/* -- the page tools on the strip ------------------------------------------ */
+.pdf-thumbs--tools .pdf-thumbs__page { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.pdf-thumbs--tools .pdf-thumbs__page.is-drop { outline: 2px solid #0099ff; outline-offset: 2px; }
+.pdf-thumbs--tools .pdf-thumbs__page.is-dragging { opacity: 0.5; }
+.pdf-thumbs__tools { display: flex; align-items: center; gap: 2px; }
+.pdf-thumbs__tool {
+  min-width: 24px;
+  height: 22px;
+  padding: 0 4px;
+  border: 1px solid #d0d0d0;
+  border-radius: 3px;
+  background: #fff;
+  color: #0099ff;
+  font-size: 11px;
+  cursor: pointer;
+}
+.pdf-thumbs__tool--danger { color: #b91c1c; }
+.pdf-thumbs__tool:disabled { opacity: 0.5; cursor: default; }
+.pdf-thumbs__rotation { min-width: 26px; text-align: center; font-size: 11px; color: #555; }
+.pdf-thumbs__insert {
+  width: 120px;
+  margin: 2px auto;
+  padding: 1px 0;
+  border: 1px dashed #b8c4d0;
+  border-radius: 3px;
+  background: transparent;
+  color: #0099ff;
+  font-size: 11px;
+  cursor: pointer;
+  opacity: 0.55;
+}
+.pdf-thumbs__insert:hover,
+.pdf-thumbs__insert:focus-visible { opacity: 1; background: #e8f5ff; }
+.pdf-thumbs__error { margin: 4px; padding: 4px 6px; font-size: 12px; color: #b91c1c; background: #fef2f2; border-radius: 3px; }
+
+/* -- the menus' extras ------------------------------------------------------ */
+.workspace .ws-toolmenu__extras { display: flex; flex-direction: column; }
+.workspace .ws-thumbs { display: grid; grid-template-columns: repeat(3, 56px); gap: 6px; padding: 4px 10px 6px; }
+.workspace .ws-thumbs__empty { grid-column: 1 / -1; font-size: 12px; color: #6b7280; }
+.workspace .ws-thumb { position: relative; width: 56px; height: 42px; }
+.workspace .ws-thumb--sig { width: 56px; }
+.workspace .ws-thumb__pick {
+  width: 100%;
+  height: 100%;
+  padding: 2px;
+  border: 1px solid #d0d0d0;
+  border-radius: 3px;
+  background: #fff;
+  cursor: pointer;
+}
+.workspace .ws-thumb__pick:hover,
+.workspace .ws-thumb__pick:focus-visible { border-color: #0099ff; }
+.workspace .ws-thumb__pick img { width: 100%; height: 100%; object-fit: contain; }
+.workspace .ws-thumb__empty { display: block; width: 100%; height: 100%; background: #f3f4f6; }
+.workspace .ws-thumb__remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 1px solid #d0d0d0;
+  border-radius: 50%;
+  background: #fff;
+  color: #b91c1c;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+}
+.workspace .ws-toolmenu__error { padding: 2px 10px; font-size: 12px; color: #b91c1c; }
+
+/* -- the PropertiesBar's F2 groups ----------------------------------------- */
+.workspace .ws-align { display: inline-flex; gap: 2px; }
+.workspace .ws-align__button { min-width: 30px; padding: 0 4px; }
+.workspace .ws-v7 { position: relative; display: inline-flex; }
+.workspace .ws-v7__panel {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 240px;
+  padding: 8px 10px;
+  border: 1px solid #d0d0d0;
+  border-radius: 4px;
+  background: #fff;
+  box-shadow: 0 6px 18px rgba(16, 24, 40, 0.14);
+}
+.workspace .ws-v7__row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.workspace .ws-v7__label { min-width: 52px; font-size: 12px; color: #555; }
+.workspace .ws-boxfont .tb-font { display: inline-flex; }
+
+/* -- the dialogs -------------------------------------------------------------- */
+.ws-dialog { display: flex; flex-direction: column; gap: 10px; }
+.ws-dialog__choices { display: flex; flex-direction: column; gap: 4px; }
+.ws-dialog__input { width: 100%; box-sizing: border-box; padding: 6px 8px; border: 1px solid #d0d0d0; border-radius: 4px; font: inherit; }
+.ws-dialog__row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.fonts-dialog { width: min(640px, 94vw); display: flex; flex-direction: column; gap: 8px; }
+.fonts-dialog__head { display: flex; align-items: center; justify-content: space-between; }
+.fonts-dialog__head h2 { margin: 0; font-size: 18px; }
+.fonts-dialog__list { list-style: none; margin: 0; padding: 0; max-height: 60vh; overflow-y: auto; }
+.fonts-dialog__option {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 12px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-bottom: 1px solid #eee;
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+}
+.fonts-dialog__option:hover,
+.fonts-dialog__option.is-current { background: #e8f5ff; }
+.fonts-dialog__preview { font-size: 20px; }
+.fonts-dialog__meta { font-size: 12px; color: #6b7280; align-self: center; }
+.fonts-dialog__chip { grid-column: 1 / -1; justify-self: start; }
+.tb-font__more {
+  display: block;
+  width: 100%;
+  padding: 6px 10px;
+  border: 0;
+  border-top: 1px solid #eee;
+  background: #fff;
+  color: #0099ff;
+  text-align: left;
+  cursor: pointer;
+}
+.tb-font__more:hover { background: #e8f5ff; }
+
+/* -- the Type tab of the signature dialog ------------------------------------ */
+.sign-type__fonts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 8px; }
+.sign-type__font {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 6px;
+  border: 1px solid #d0d0d0;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+}
+.sign-type__font.is-selected { border-color: #1f6feb; box-shadow: 0 0 0 2px rgba(31, 111, 235, 0.2); }
+.sign-type__preview { font-size: 28px; line-height: 1.2; white-space: nowrap; overflow: hidden; max-width: 100%; }
+.sign-type__label { font-size: 12px; color: #6b7280; }
+
+/* The toolbar's font picker stays narrow (the row must fit at 1600 px). */
+.workspace .ws-boxfont .tb-font__button { max-width: 118px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workspace .ws-toolbar--compact .ws-boxfont .editor__field-label { display: none; }
+.workspace .ws-align, .workspace .ws-line-height { max-width: 78px; }

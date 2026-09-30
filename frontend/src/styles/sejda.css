@@ -1,0 +1,338 @@
+/* ==========================================================================
+   Sejda-style editor chrome (F1a, EDITOR-V2-PLAN §7 «Toolbar»)
+   --------------------------------------------------------------------------
+   SCOPED: every rule starts at `.workspace` (the contract workspace root), so
+   Dashboard, Upload, My signatures, Templates, the review queue and every
+   other page keep the app's own theme untouched -- the tokens below do not
+   even exist outside the workspace.
+
+   What it restyles, and only that:
+     * the toolbar (`.ws-toolbar`): white controls, blue icons / labels /
+       borders, a light-blue hover and armed state, 1 px borders, 4 px
+       radius, 34 px controls, 13 px text;
+     * the toolbar's drop-downs (`.ws-toolgroup__menu`): a white panel, icon +
+       label rows, light-grey section headings, a soft shadow, scroll when
+       tall (they are placed in the viewport by `FloatingToolbar`);
+     * the top bar (`EditorTopBar`, `.sj-topbar`);
+     * the PDF canvas: #E9E9E9 behind white pages with a restrained shadow.
+
+   GEOMETRY: nothing here touches `.pdf-page`'s box (no border / padding /
+   transform): the checks read the render scale off it. A shadow is outside
+   the box.
+   ========================================================================== */
+
+.workspace {
+  --sj-accent: #0099ff;
+  --sj-accent-hover: #e8f5ff;
+  --sj-accent-soft: #d6eeff;
+  --sj-accent-strong: #007acc;
+  --sj-accent-press: #0088e6;
+  --sj-canvas: #e9e9e9;
+  --sj-border: 1px solid #d0d0d0;
+  --sj-border-color: #d0d0d0;
+  --sj-radius: 4px;
+  --sj-ctl-h: 34px;
+  --sj-font: 13px;
+  --sj-text: #333333;
+  --sj-muted: #8a8a8a;
+  --sj-section: #9a9a9a;
+  --sj-shadow: 0 2px 8px rgba(0, 0, 0, 0.14);
+}
+
+/* -- the canvas ---------------------------------------------------------------- */
+/* The viewer's own strip (Pages / Prev / Find / zoom) was 29.5 px tall; with
+   the old 55.5 px toolbar the halves cancelled and the first page started on a
+   whole pixel. The 44 px Sejda rows no longer cancel it, so the strip is a
+   whole 30 px: a page on a half pixel shifts every click by 0.5 px, which is
+   ~0.3 pt at the fit scale -- enough to change the half-point snap. */
+.workspace .pdf-viewer .pdf-toolbar { box-sizing: border-box; min-height: 30px; }
+.workspace .pdf-viewer .pdf-stage { background: var(--sj-canvas); border-radius: 0; }
+.workspace .pdf-page { box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18); }
+.workspace .pdf-page--current { box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18), 0 0 0 2px var(--sj-accent); }
+
+/* -- the toolbar ----------------------------------------------------------------- */
+.workspace .ws-toolbar {
+  gap: 6px;
+  padding: 2px 6px;
+  border: var(--sj-border);
+  border-radius: var(--sj-radius);
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+  font-size: var(--sj-font);
+}
+.workspace .ws-toolbar--floating { box-shadow: var(--sj-shadow); }
+/* Docked: glued under the top bar. The top bar's own negative margin cancels
+   the column's 8 px gap (see `.sj-topbar`); nothing here depends on whether
+   the banners block is empty, so a banner appearing moves only the banners
+   block -- whose height `useGestureLayoutLock` freezes during a press. */
+.workspace .sj-topbar ~ .ws-toolbar--docked-top {
+  border-top-color: #e6e6e6;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+.workspace .ws-toolbar--mobile { border-radius: 0; box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.12); }
+.workspace .ws-toolbar > .editor__group,
+.workspace .ws-toolbar__main > .editor__group { border-right-color: #e2e2e2; }
+
+.workspace .ws-toolbar .editor__tool,
+.workspace .ws-toolbar .editor__button {
+  box-sizing: border-box;
+  height: var(--sj-ctl-h);
+  padding: 0 8px;
+  gap: 5px;
+  border: 1px solid transparent;
+  border-radius: var(--sj-radius);
+  background: #fff;
+  color: var(--sj-accent);
+  font-size: var(--sj-font);
+  line-height: 1;
+}
+.workspace .ws-toolbar .editor__tool:hover:not(:disabled),
+.workspace .ws-toolbar .editor__button:hover:not(:disabled) {
+  border-color: #b3deff;
+  background: var(--sj-accent-hover);
+}
+.workspace .ws-toolbar .editor__tool:active:not(:disabled),
+.workspace .ws-toolbar .editor__button:active:not(:disabled) { background: var(--sj-accent-soft); }
+.workspace .ws-toolbar .editor__tool.is-active,
+.workspace .ws-toolbar .editor__button.is-active {
+  border-color: var(--sj-accent);
+  background: var(--sj-accent-soft);
+  color: var(--sj-accent-strong);
+}
+.workspace .ws-toolbar .editor__tool:disabled,
+.workspace .ws-toolbar .editor__button:disabled {
+  border-color: transparent;
+  background: #fff;
+  color: #b5b5b5;
+  opacity: 1;
+}
+.workspace .ws-toolbar .editor__tool-glyph { font-size: 16px; display: inline-flex; align-items: center; }
+.workspace .ws-toolbar .editor__count {
+  background: #f0f0f0;
+  color: var(--sj-muted);
+  border-radius: var(--sj-radius);
+}
+.workspace .ws-toolbar .editor__status { color: var(--sj-muted); }
+.workspace .ws-toolbar .editor__field-label { color: var(--sj-muted); font-size: 12px; }
+.workspace .ws-toolbar .editor__select,
+.workspace .ws-toolbar .editor__number,
+.workspace .ws-toolbar .editor__date {
+  box-sizing: border-box;
+  height: var(--sj-ctl-h);
+  padding: 0 6px;
+  border: var(--sj-border);
+  border-radius: var(--sj-radius);
+  color: var(--sj-text);
+  font-size: var(--sj-font);
+}
+.workspace .ws-toolbar .editor__select:focus-visible,
+.workspace .ws-toolbar .editor__number:focus-visible,
+.workspace .ws-toolbar .editor__date:focus-visible,
+.workspace .ws-toolbar .editor__tool:focus-visible,
+.workspace .ws-toolbar .editor__button:focus-visible,
+.workspace .ws-toolgroup__toggle:focus-visible {
+  outline: 2px solid var(--sj-accent);
+  outline-offset: 1px;
+}
+.workspace .ws-toolbar__grip,
+.workspace .ws-toolbar__collapse { color: #a0a0a0; border-radius: var(--sj-radius); }
+.workspace .ws-toolbar__collapse { height: var(--sj-ctl-h); }
+
+/* Undo / Redo sit right after the tools (spec: «… | Shapes ▼ | Undo | Redo»). */
+.workspace .ws-toolbar__history { display: inline-flex; align-items: center; gap: 2px; }
+
+/* -- the split buttons: «Text ▼» = [main | ▾] drawn as ONE control -------------- */
+.workspace .ws-toolgroup { align-items: stretch; }
+.workspace .ws-toolgroup .ws-toolgroup__main {
+  padding-right: 4px;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  border-right-width: 0;
+}
+.workspace .ws-toolgroup__toggle {
+  position: static;
+  box-sizing: border-box;
+  width: 18px;
+  height: var(--sj-ctl-h);
+  padding: 0;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-left-width: 0;
+  border-radius: 0 var(--sj-radius) var(--sj-radius) 0;
+  background: #fff;
+  color: var(--sj-accent);
+}
+.workspace .ws-toolgroup:hover > .ws-toolgroup__main:not(:disabled),
+.workspace .ws-toolgroup:hover > .ws-toolgroup__toggle {
+  border-color: #b3deff;
+  background: var(--sj-accent-hover);
+}
+.workspace .ws-toolgroup.is-armed > .ws-toolgroup__main,
+.workspace .ws-toolgroup.is-armed > .ws-toolgroup__toggle {
+  border-color: var(--sj-accent);
+  background: var(--sj-accent-soft);
+  color: var(--sj-accent-strong);
+}
+.workspace .ws-toolgroup.is-open > .ws-toolgroup__toggle {
+  border-color: var(--sj-accent);
+  background: var(--sj-accent-soft);
+  color: var(--sj-accent-strong);
+}
+/* A compact row (labels hidden because the row would not fit) packs tighter,
+   like it did before F1a: 19 tools, every property group and a free-signature
+   count still share one row at 1600 px (nothing under «More ▾»). These beat the
+   34 px control rule above on specificity; the height stays 34 px. */
+.workspace .ws-toolbar--compact { gap: 4px; }
+.workspace .ws-toolbar--compact .ws-toolbar__tools { gap: 2px; }
+.workspace .ws-toolbar--compact .ws-toolbar__tools .editor__tool {
+  min-width: 30px;
+  padding: 0 6px;
+  justify-content: center;
+}
+.workspace .ws-toolbar--compact .ws-toolbar__tools .ws-toolgroup__main { padding: 0 2px 0 6px; min-width: 28px; }
+.workspace .ws-toolbar--compact .ws-toolgroup__toggle { width: 16px; }
+.workspace .ws-toolbar--compact .editor__button { padding: 0 5px; gap: 3px; }
+.workspace .ws-toolbar--compact > .editor__group,
+.workspace .ws-toolbar--compact .ws-toolbar__main > .editor__group { padding-right: 4px; }
+.workspace .ws-toolbar--mobile .ws-toolgroup__toggle { width: 22px; height: 44px; }
+.workspace .ws-toolbar--mobile .editor__tool,
+.workspace .ws-toolbar--mobile .editor__button { height: 44px; }
+.workspace .ws-toolbar--vertical .ws-toolgroup__main { flex: 1 1 auto; }
+
+/* -- the drop-down lists ---------------------------------------------------------
+   `position: fixed`, placed by `FloatingToolbar` (inside the viewport, below
+   the button -- above it when there is more room there, e.g. the ≤ 640 px
+   bottom bar -- and re-placed on scroll / resize / zoom). */
+.workspace .ws-toolgroup__menu {
+  position: fixed;
+  top: 0;
+  right: auto;
+  bottom: auto;
+  left: 0;
+  gap: 0;
+  min-width: 210px;
+  max-width: calc(100vw - 16px);
+  padding: 4px 0;
+  border: var(--sj-border);
+  border-radius: var(--sj-radius);
+  background: #fff;
+  box-shadow: var(--sj-shadow);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.workspace .ws-toolgroup__menu:not([data-placed]) { visibility: hidden; }
+.workspace .ws-toolmenu__section {
+  display: block;
+  padding: 8px 12px 3px;
+  color: var(--sj-section);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  user-select: none;
+}
+.workspace .ws-toolmenu__section:first-child { padding-top: 4px; }
+.workspace .ws-toolmenu__item {
+  box-sizing: border-box;
+  min-height: 32px;
+  padding: 0 12px;
+  gap: 10px;
+  border: 0;
+  border-radius: 0;
+  color: var(--sj-text);
+  font-size: var(--sj-font);
+}
+.workspace .ws-toolmenu__item .editor__tool-glyph { width: 20px; color: var(--sj-accent); display: inline-flex; justify-content: center; }
+.workspace .ws-toolmenu__item:hover:not(:disabled) { background: var(--sj-accent-hover); }
+.workspace .ws-toolmenu__item.is-active {
+  border: 0;
+  background: var(--sj-accent-soft);
+  color: var(--sj-accent-strong);
+}
+.workspace .ws-toolmenu__item:disabled { color: #b5b5b5; }
+.workspace .ws-toolmenu__item:disabled .editor__tool-glyph { color: #c5c5c5; }
+.workspace .ws-toolmenu__item:focus-visible { outline: 2px solid var(--sj-accent); outline-offset: -2px; }
+.workspace .ws-toolmenu__key {
+  border: var(--sj-border);
+  border-radius: 3px;
+  background: #f7f7f7;
+  color: var(--sj-muted);
+  font-size: 11px;
+}
+
+/* -- the other pop-overs of the toolbar (More ▾, properties, colours) ------------- */
+.workspace .ws-toolbar__popover,
+.workspace .ws-color__palette {
+  border: var(--sj-border);
+  border-radius: var(--sj-radius);
+  background: #fff;
+  box-shadow: var(--sj-shadow);
+}
+
+/* -- the top bar (`EditorTopBar`) ------------------------------------------------ */
+/* The top bar and the docked toolbar read as ONE header block (no gap, shared
+   edge). It also keeps the pages where the checks expect them: the old
+   toolbar was 55.5 px; top bar + toolbar are 40 + 40 px, so every 8 px saved
+   here keeps a click near the bottom of a 1200 px window on the page. */
+.workspace .sj-topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 40px;
+  margin-bottom: -8px;
+  padding: 2px 6px 2px 12px;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  box-sizing: border-box;
+  border: var(--sj-border);
+  border-radius: var(--sj-radius);
+  background: #fff;
+  color: var(--sj-text);
+  font-size: var(--sj-font);
+}
+.workspace .sj-topbar__name {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.25;
+}
+.workspace .sj-topbar__title,
+.workspace .sj-topbar__subtitle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.workspace .sj-topbar__title { font-size: 14px; font-weight: 600; }
+.workspace .sj-topbar__subtitle { color: var(--sj-muted); font-size: 12px; }
+.workspace .sj-topbar__session,
+.workspace .sj-topbar__actions { display: flex; flex: 0 0 auto; align-items: center; gap: 8px; }
+.workspace .sj-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  box-sizing: border-box;
+  height: var(--sj-ctl-h);
+  padding: 0 12px;
+  border: 1px solid var(--sj-accent);
+  border-radius: var(--sj-radius);
+  background: #fff;
+  color: var(--sj-accent);
+  font: inherit;
+  font-size: var(--sj-font);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.workspace .sj-btn:hover:not(:disabled) { background: var(--sj-accent-hover); }
+.workspace .sj-btn--primary { background: var(--sj-accent); color: #fff; }
+.workspace .sj-btn--primary:hover:not(:disabled) { background: var(--sj-accent-press); }
+.workspace .sj-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.workspace .sj-btn:focus-visible { outline: 2px solid var(--sj-accent); outline-offset: 2px; }
+@media (max-width: 640px) {
+  .workspace .sj-topbar { gap: 6px; }
+  .workspace .sj-btn { padding: 0 8px; }
+  .workspace [data-testid='editor-download'] .sj-btn__label { display: none; }
+}

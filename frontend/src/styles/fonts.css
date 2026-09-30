@@ -1,0 +1,299 @@
+/* ==========================================================================
+   Liberation Sans / Serif / Mono (SIL OFL 1.1, `public/fonts/liberation/`,
+   LICENSE beside them) -- the very files the backend subsets into the PDF
+   (`backend/app/assets/fonts/liberation/`).
+   --------------------------------------------------------------------------
+   The family names are EXACTLY the API names (`LiberationSans`, ...), so a
+   `font-family: LiberationSans` in the preview is the face `font:
+   "LiberationSans"` prints in. They are metric-compatible with Helvetica
+   (Arial), Times and Courier, so the base-14 families preview in them too
+   (`lib/fonts.ts FONT_CSS`): what fits on the screen fits in the PDF.
+   `font-display: swap` -- the text is never invisible; anything measured
+   (`getBBox`, the width warning) is measured again once the face is in
+   (`useFontEpoch`).
+   ========================================================================== */
+
+@font-face {
+  font-family: 'LiberationSans';
+  src: url('/fonts/liberation/LiberationSans-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'LiberationSans';
+  src: url('/fonts/liberation/LiberationSans-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'LiberationSans';
+  src: url('/fonts/liberation/LiberationSans-Italic.ttf') format('truetype');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'LiberationSans';
+  src: url('/fonts/liberation/LiberationSans-BoldItalic.ttf') format('truetype');
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'LiberationSerif';
+  src: url('/fonts/liberation/LiberationSerif-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'LiberationSerif';
+  src: url('/fonts/liberation/LiberationSerif-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'LiberationSerif';
+  src: url('/fonts/liberation/LiberationSerif-Italic.ttf') format('truetype');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'LiberationSerif';
+  src: url('/fonts/liberation/LiberationSerif-BoldItalic.ttf') format('truetype');
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'LiberationMono';
+  src: url('/fonts/liberation/LiberationMono-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'LiberationMono';
+  src: url('/fonts/liberation/LiberationMono-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'LiberationMono';
+  src: url('/fonts/liberation/LiberationMono-Italic.ttf') format('truetype');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'LiberationMono';
+  src: url('/fonts/liberation/LiberationMono-BoldItalic.ttf') format('truetype');
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
+
+/* ==========================================================================
+   F2: the B2 families (`GET /api/fonts`) -- the very files the backend
+   embeds (`backend/app/assets/fonts/<family>/`, licence beside them in
+   `public/fonts/<family>/`). Arimo / Carlito / Caladea are metric-compatible
+   with Arial / Calibri / Cambria; DejaVu adds Greek and wide Cyrillic; Amiri
+   is Arabic-script (LTR runs only); Great Vibes / Allura / Sacramento are the
+   typed-signature scripts (preview only: the server renders the PNG).
+   ========================================================================== */
+@font-face {
+  font-family: 'Arimo';
+  src: url('/fonts/arimo/Arimo-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Arimo';
+  src: url('/fonts/arimo/Arimo-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Arimo';
+  src: url('/fonts/arimo/Arimo-Italic.ttf') format('truetype');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Arimo';
+  src: url('/fonts/arimo/Arimo-BoldItalic.ttf') format('truetype');
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Carlito';
+  src: url('/fonts/carlito/Carlito-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Carlito';
+  src: url('/fonts/carlito/Carlito-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Carlito';
+  src: url('/fonts/carlito/Carlito-Italic.ttf') format('truetype');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Carlito';
+  src: url('/fonts/carlito/Carlito-BoldItalic.ttf') format('truetype');
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Caladea';
+  src: url('/fonts/caladea/Caladea-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Caladea';
+  src: url('/fonts/caladea/Caladea-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Caladea';
+  src: url('/fonts/caladea/Caladea-Italic.ttf') format('truetype');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Caladea';
+  src: url('/fonts/caladea/Caladea-BoldItalic.ttf') format('truetype');
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'DejaVuSans';
+  src: url('/fonts/dejavu/DejaVuSans.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'DejaVuSans';
+  src: url('/fonts/dejavu/DejaVuSans-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'DejaVuSans';
+  src: url('/fonts/dejavu/DejaVuSans-Oblique.ttf') format('truetype');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'DejaVuSans';
+  src: url('/fonts/dejavu/DejaVuSans-BoldOblique.ttf') format('truetype');
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'DejaVuSerif';
+  src: url('/fonts/dejavu/DejaVuSerif.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'DejaVuSerif';
+  src: url('/fonts/dejavu/DejaVuSerif-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'DejaVuSerif';
+  src: url('/fonts/dejavu/DejaVuSerif-Italic.ttf') format('truetype');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'DejaVuSerif';
+  src: url('/fonts/dejavu/DejaVuSerif-BoldItalic.ttf') format('truetype');
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Amiri';
+  src: url('/fonts/amiri/Amiri-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Amiri';
+  src: url('/fonts/amiri/Amiri-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Amiri';
+  src: url('/fonts/amiri/Amiri-Italic.ttf') format('truetype');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Amiri';
+  src: url('/fonts/amiri/Amiri-BoldItalic.ttf') format('truetype');
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'GreatVibes';
+  src: url('/fonts/script/GreatVibes-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Allura';
+  src: url('/fonts/script/Allura-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Sacramento';
+  src: url('/fonts/script/Sacramento-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}

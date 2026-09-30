@@ -1,0 +1,24 @@
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20
+pydantic==2.10.4
+email-validator==2.2.0
+pydantic-settings==2.7.0
+SQLAlchemy==2.0.36
+alembic==1.14.0
+psycopg2-binary==2.9.10
+celery==5.4.0
+redis==5.2.1
+boto3==1.35.90
+pdfplumber==0.11.4
+pypdf==5.1.0
+reportlab==4.2.5
+Pillow==11.0.0
+python-jose[cryptography]==3.3.0
+cryptography==44.0.0
+bcrypt==4.2.1
+python-dateutil==2.9.0.post0
+# PDF editor v2 engine (AGPL-3.0 / Artifex commercial; imported ONLY by app/services/pdf_engine/adapter.py)
+pymupdf==1.28.2
+# rule_locator rendering (was installed but unpinned)
+pypdfium2==5.13.0

@@ -1,0 +1,841 @@
+/* ==========================================================================
+   SignWithMe -- design system
+   --------------------------------------------------------------------------
+   Order: tokens -> reset/base -> typography -> shell -> buttons -> forms ->
+   feedback -> tables -> review layout -> viewer -> signing panel -> sidebar ->
+   decision -> modal -> library -> auth -> utilities -> responsive.
+
+   Two rules hold this file together:
+     1. Class names are never renamed or removed -- only added to.
+     2. Everything inside the PDF overlay (`.pdf-page`, `.pdf-stage`, `.slot*`,
+        `.placed-*`, `.highlight*`) carries the signature-placement maths.
+        Its position / size / pointer-events declarations are frozen; only
+        colour, and nothing that moves a box, may change there.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   1. Design tokens
+   -------------------------------------------------------------------------- */
+:root {
+  /* -- palette (the twelve original values, unchanged) -------------------- */
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --border: #d9dee5;
+  --text: #16202c;
+  --muted: #5c6b7a;
+  --accent: #1f6feb;
+  --good: #1a7f4b;
+  --good-bg: #e7f6ed;
+  --warn: #9a6700;
+  --warn-bg: #fff6e0;
+  --bad: #b42318;
+  --bad-bg: #fdeceb;
+  --radius: 8px;
+
+  /* -- semantic surfaces & lines ----------------------------------------- */
+  --surface-sunken: #f1f3f6;      /* insets: previews, inline editors        */
+  --surface-hover: #f4f6f9;       /* the hover wash on a white control       */
+  --surface-active: #e9edf2;      /* the same control while pressed          */
+  --border-strong: #c3ccd6;       /* a line that has to be noticed           */
+  --border-subtle: #e6eaee;       /* a line that only separates              */
+
+  /* Tinted borders for the three tones (previously inline literals). */
+  --good-border: #bfe3cd;
+  --warn-border: #ead9a8;
+  --bad-border: #f3c2bd;
+  /* The amber used for "warning" bars and left rails; lighter than --warn. */
+  --warn-mark: #d9a441;
+
+  /* -- interaction states ------------------------------------------------- */
+  --accent-hover: #1a5fd0;
+  --accent-active: #1750b4;
+  --accent-soft: rgba(31, 111, 235, 0.08);
+  --warn-hover: #86590a;
+  --warn-active: #714a08;
+  --bad-hover: #9a1e15;
+
+  /* -- spacing scale ------------------------------------------------------ */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 40px;
+
+  /* -- typography --------------------------------------------------------- */
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --text-2xs: 10px;   /* overlay labels only                                 */
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-base: 13px;
+  --text-md: 14px;    /* body                                                */
+  --text-lg: 16px;
+  --text-xl: 18px;
+  --text-2xl: 20px;
+  --text-3xl: 22px;
+
+  --weight-normal: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  --leading-tight: 1.25;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.6;
+  --tracking-caps: 0.04em;
+
+  /* -- radii -------------------------------------------------------------- */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: var(--radius);   /* 8px -- cards, panels, modals              */
+  --radius-xl: 12px;
+  --radius-pill: 999px;
+
+  /* -- elevation ---------------------------------------------------------- */
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
+  --shadow-md: 0 2px 8px rgba(16, 24, 40, 0.10);
+  --shadow-lg: 0 12px 32px rgba(16, 24, 40, 0.18);
+
+  /* -- z-index ------------------------------------------------------------ */
+  --z-base: 1;
+  --z-raised: 10;
+  --z-sticky: 20;
+  --z-overlay: 40;
+  --z-modal: 50;
+
+  /* -- motion ------------------------------------------------------------- */
+  --transition-fast: 90ms ease;
+  --transition-base: 160ms ease;
+
+  /* -- focus -------------------------------------------------------------- */
+  --focus-width: 2px;
+  --focus-offset: 2px;
+  --focus-color: var(--accent);
+
+  /* -- layout ------------------------------------------------------------- */
+  /* Measured height of `.app__header`: 12px padding + a 39px control + the
+     1px bottom rule. The review/sign split screen is sized against it, so it
+     lives here rather than being repeated as a literal. */
+  --header-h: 64px;
+  --panel-w: clamp(320px, 26vw, 380px);
+  --button-pad-y: 8px;
+  --button-pad-x: 14px;
+
+  color-scheme: light;
+}
+
+/* --------------------------------------------------------------------------
+   2. Reset & base
+   -------------------------------------------------------------------------- */
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: var(--text-md)/var(--leading-normal) var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* One visible focus ring for the whole app. Outlines never affect layout, so
+   this is safe on the absolutely-positioned overlay controls too. */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: var(--focus-width) solid var(--focus-color);
+  outline-offset: var(--focus-offset);
+}
+
+/* Keyboard users get the ring; the mouse does not drag one around. */
+:where(a, button, input, select, textarea):focus:not(:focus-visible) { outline: none; }
+
+img, svg, canvas { max-width: 100%; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    transition-duration: 1ms !important;
+    animation-duration: 1ms !important;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   3. Typography
+   -------------------------------------------------------------------------- */
+code { font-family: var(--font-mono); font-size: var(--text-sm); }
+
+h1, h2, h3, h4 { line-height: var(--leading-tight); font-weight: var(--weight-semibold); }
+
+a { color: var(--accent); }
+a:hover { color: var(--accent-hover); }
+
+/* --------------------------------------------------------------------------
+   4. App shell
+   -------------------------------------------------------------------------- */
+.app { min-height: 100vh; display: flex; flex-direction: column; }
+
+.app__header {
+  display: flex; align-items: center; gap: var(--space-6);
+  padding: var(--space-3) var(--space-5);
+  background: var(--surface); border-bottom: 1px solid var(--border);
+  position: relative; z-index: var(--z-sticky);
+}
+.app__brand {
+  font-weight: var(--weight-bold); text-decoration: none; color: var(--text);
+  transition: color var(--transition-fast);
+}
+.app__brand:hover { color: var(--accent); }
+.app__nav { display: flex; gap: var(--space-4); }
+.app__nav a {
+  color: var(--muted); text-decoration: none; padding: var(--space-1) 0;
+  /* Transparent by default so the active underline never nudges the row. */
+  border-bottom: 2px solid transparent;
+  transition: color var(--transition-fast), border-color var(--transition-fast);
+}
+.app__nav a:hover { color: var(--text); border-bottom-color: var(--border-strong); }
+.app__nav a.active { color: var(--accent); border-bottom: 2px solid var(--accent); }
+.app__user { margin-left: auto; display: flex; align-items: center; gap: var(--space-3); }
+.app__user-name { white-space: nowrap; }
+.app__user-name em { color: var(--muted); font-style: normal; font-size: var(--text-sm); }
+.app__main { flex: 1; min-height: 0; }
+
+.page { max-width: 1100px; margin: 0 auto; padding: var(--space-6) var(--space-5); }
+.page__header {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--space-4); margin-bottom: var(--space-4);
+}
+.page__header h1 { font-size: var(--text-3xl); margin: 0; }
+
+.card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); padding: var(--space-4);
+  margin-bottom: var(--space-4); box-shadow: var(--shadow-sm);
+}
+.card h2 { margin: 0 0 var(--space-2); font-size: var(--text-lg); }
+.card__heading {
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: var(--space-2) var(--space-3); margin-bottom: var(--space-2);
+}
+.card__heading h2 { margin: 0; }
+
+/* --------------------------------------------------------------------------
+   5. Buttons
+   --------------------------------------------------------------------------
+   The header height token depends on the default button box
+   (8px + 14px padding, 14px/1.5 text, 1px border = 39px). Changing that
+   padding means changing `--header-h` with it.
+   -------------------------------------------------------------------------- */
+.button {
+  border: 1px solid var(--border); background: var(--surface); color: var(--text);
+  padding: var(--button-pad-y) var(--button-pad-x); border-radius: var(--radius-md);
+  font: inherit; font-weight: var(--weight-medium); cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2);
+  text-decoration: none; white-space: nowrap;
+  transition: background-color var(--transition-fast), border-color var(--transition-fast),
+              color var(--transition-fast), box-shadow var(--transition-fast),
+              transform var(--transition-fast);
+}
+.button:hover { background: var(--surface-hover); border-color: var(--border-strong); }
+.button:active { background: var(--surface-active); transform: translateY(1px); }
+.button:disabled,
+.button[aria-disabled='true'] {
+  opacity: 0.5; cursor: not-allowed; transform: none;
+  background: var(--surface); border-color: var(--border); box-shadow: none;
+}
+
+.button--primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.button--primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+.button--primary:active { background: var(--accent-active); border-color: var(--accent-active); }
+.button--primary:disabled { background: var(--accent); border-color: var(--accent); }
+
+/* Deliberate, not routine: amber so an override never reads as the normal approve. */
+.button--warning { background: var(--warn); border-color: var(--warn); color: #fff; }
+.button--warning:hover { background: var(--warn-hover); border-color: var(--warn-hover); }
+.button--warning:active { background: var(--warn-active); border-color: var(--warn-active); }
+.button--warning:disabled { background: var(--warn); border-color: var(--warn); }
+
+.button--ghost { background: transparent; }
+.button--ghost:hover { background: var(--surface-hover); }
+
+.button--link {
+  border: none; background: none; color: var(--accent); padding: 0;
+  font-weight: var(--weight-medium); text-decoration: none;
+}
+.button--link:hover { background: none; color: var(--accent-hover); text-decoration: underline; }
+.button--link:active { background: none; transform: none; }
+.button--link:disabled { background: none; text-decoration: none; }
+
+.button--danger { color: var(--bad); }
+.button--danger:hover { color: var(--bad-hover); }
+
+.button--block { width: 100%; }
+.button--small { padding: 5px 10px; font-size: var(--text-base); }
+
+/* --------------------------------------------------------------------------
+   6. Forms
+   -------------------------------------------------------------------------- */
+.field { display: block; margin-bottom: var(--space-3); }
+.field span {
+  display: block; font-size: var(--text-base); color: var(--muted);
+  font-weight: var(--weight-medium); margin-bottom: var(--space-1);
+}
+
+.field input, .field select, .field__textarea, .field__input {
+  width: 100%; padding: var(--space-2) 10px; border: 1px solid var(--border);
+  border-radius: var(--radius-md); font: inherit; background: var(--surface); color: var(--text);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast),
+              background-color var(--transition-fast);
+}
+.field input:hover, .field select:hover, .field__textarea:hover, .field__input:hover {
+  border-color: var(--border-strong);
+}
+.field input:focus, .field select:focus, .field__textarea:focus, .field__input:focus {
+  border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.field input:focus-visible, .field select:focus-visible,
+.field__textarea:focus-visible, .field__input:focus-visible {
+  outline: none;
+}
+.field input:disabled, .field select:disabled,
+.field__textarea:disabled, .field__input:disabled {
+  background: var(--surface-sunken); color: var(--muted); cursor: not-allowed;
+}
+.field input::placeholder, .field__textarea::placeholder, .field__input::placeholder {
+  color: var(--muted); opacity: 0.85;
+}
+.field__textarea { min-height: 72px; resize: vertical; }
+.field--inline { margin: 0; flex: 1; min-width: 180px; }
+
+.checkbox {
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  font-size: var(--text-base); cursor: pointer;
+}
+.checkbox input { accent-color: var(--accent); cursor: pointer; }
+
+/* --------------------------------------------------------------------------
+   7. Feedback: hints, alerts, badges, progress
+   -------------------------------------------------------------------------- */
+.empty, .hint { color: var(--muted); font-size: var(--text-base); }
+.hint--error { color: var(--bad); }
+
+.alert {
+  padding: 10px var(--space-3); border-radius: var(--radius-md);
+  font-size: var(--text-base); line-height: var(--leading-relaxed);
+}
+.alert--error { background: var(--bad-bg); color: var(--bad); border: 1px solid var(--bad-border); }
+/* Something went right and can still be taken back -- the auto-fill notice. */
+.alert--good {
+  background: var(--good-bg); color: var(--good); border: 1px solid var(--good-border);
+  margin: 10px 0;
+}
+.alert--good p { margin: 0; }
+.alert__actions {
+  display: flex; flex-wrap: wrap; gap: var(--space-2);
+  align-items: center; margin-top: var(--space-2);
+}
+.alert--warn {
+  background: var(--warn-bg); color: var(--warn); border: 1px solid var(--warn-border);
+  margin-bottom: 10px;
+}
+.alert--warn p { margin: 0 0 6px; }
+.alert--warn p:last-child { margin-bottom: 0; }
+
+/* Reviewer override: the list of waived fields and the badge that marks the result. */
+.override-list { margin: 0 0 var(--space-2); padding-left: 18px; }
+.override-list li { margin: 2px 0; }
+.override { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 6px var(--space-2); }
+.override__meta { font-size: var(--text-sm); color: var(--muted); }
+.override__items { display: block; }
+.override__item { display: block; }
+
+.badge {
+  display: inline-block; padding: 3px var(--space-2); border-radius: var(--radius-pill);
+  font-size: var(--text-sm); font-weight: var(--weight-semibold);
+  line-height: var(--leading-normal); white-space: nowrap;
+}
+.badge--good { background: var(--good-bg); color: var(--good); }
+.badge--warn { background: var(--warn-bg); color: var(--warn); }
+.badge--bad { background: var(--bad-bg); color: var(--bad); }
+.badge--neutral { background: #eceff3; color: var(--muted); }
+/* W5: a library entry saved as initials (My signatures, the signature dialog). */
+.badge--initials { background: var(--accent-soft); color: var(--accent); margin-left: var(--space-1); }
+.prefilled-warning { margin-top: var(--space-1); max-width: 420px; }
+.prefilled-warning .hint { color: var(--warn); margin-top: 2px; }
+
+.progress { display: block; }
+.progress__header {
+  display: flex; justify-content: space-between;
+  font-size: var(--text-base); margin-bottom: var(--space-1);
+}
+.progress__track {
+  height: var(--space-2); background: #e6eaee;
+  border-radius: var(--radius-pill); overflow: hidden;
+}
+.progress__fill { height: 100%; transition: width var(--transition-base); }
+.progress__fill--good { background: var(--good); }
+.progress__fill--warn { background: var(--warn-mark); }
+.progress__fill--bad { background: var(--bad); }
+
+/* --------------------------------------------------------------------------
+   8. Tables & lists
+   -------------------------------------------------------------------------- */
+.table {
+  width: 100%; border-collapse: collapse; background: var(--surface);
+  border: 1px solid var(--border); border-radius: var(--radius-lg);
+  overflow: hidden; box-shadow: var(--shadow-sm);
+}
+.table th, .table td {
+  text-align: left; padding: 10px var(--space-3);
+  border-bottom: 1px solid var(--border); vertical-align: top;
+}
+.table th {
+  font-size: var(--text-sm); text-transform: uppercase; letter-spacing: var(--tracking-caps);
+  color: var(--muted); background: var(--surface-sunken); font-weight: var(--weight-semibold);
+}
+.table tbody tr { transition: background-color var(--transition-fast); }
+.table tbody tr:hover { background: var(--surface-hover); }
+.table tr:last-child td { border-bottom: none; }
+.table--compact th, .table--compact td { padding: 6px var(--space-2); font-size: var(--text-base); }
+.table__actions { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center; }
+
+.list { list-style: none; margin: 0; padding: 0; }
+.list__item {
+  display: flex; justify-content: space-between; gap: var(--space-3);
+  padding: var(--space-2) 0; border-bottom: 1px solid var(--border-subtle);
+}
+.list__item:last-child { border-bottom: none; }
+
+/* --------------------------------------------------------------------------
+   9. Review / signing split layout
+   -------------------------------------------------------------------------- */
+.review { display: flex; height: calc(100vh - var(--header-h)); }
+.review__document { flex: 2; min-width: 0; overflow: auto; padding: var(--space-3); }
+.review__panel {
+  flex: 0 0 var(--panel-w); min-width: 320px;
+  border-left: 1px solid var(--border); background: var(--surface);
+  overflow-y: auto; padding: var(--space-3);
+}
+.review__actions {
+  display: flex; flex-wrap: wrap; gap: var(--space-2);
+  justify-content: flex-end; margin-top: var(--space-2);
+}
+
+/* --------------------------------------------------------------------------
+   10. PDF viewer chrome
+   --------------------------------------------------------------------------
+   `.pdf-viewer` is only a container: the overlay measures itself against
+   `.pdf-page`, so nothing here may take part in the page's own box.
+   -------------------------------------------------------------------------- */
+.pdf-viewer {
+  min-width: 0;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-2);
+}
+
+.pdf-toolbar {
+  display: flex; align-items: center; flex-wrap: wrap;
+  gap: var(--space-2); margin-bottom: var(--space-2);
+}
+.pdf-toolbar__spacer { flex: 1; }
+.pdf-toolbar__page, .pdf-toolbar__zoom {
+  font-size: var(--text-base); color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.pdf-toolbar button {
+  border: 1px solid var(--border); background: var(--surface);
+  border-radius: var(--radius-md); padding: var(--space-1) 10px; cursor: pointer;
+  color: var(--text); font-family: inherit; font-size: var(--text-base);
+  transition: background-color var(--transition-fast), border-color var(--transition-fast),
+              color var(--transition-fast);
+}
+.pdf-toolbar button:hover:not(:disabled) {
+  background: var(--surface-hover); border-color: var(--border-strong);
+}
+.pdf-toolbar button:active:not(:disabled) { background: var(--surface-active); }
+.pdf-toolbar button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.pdf-stage { display: flex; justify-content: center; }
+.pdf-status { color: var(--muted); }
+.pdf-status--error { color: var(--bad); }
+
+/* The overlay is positioned against this box, so it must match the canvas
+   exactly -- any padding here would offset every highlight. */
+.pdf-page { position: relative; box-shadow: 0 1px 6px rgba(16, 24, 40, 0.16); background: #fff; }
+.pdf-page--interactive { cursor: crosshair; }
+.pdf-canvas { display: block; }
+.pdf-overlay { position: absolute; inset: 0; pointer-events: none; }
+.pdf-overlay > * { pointer-events: auto; }
+
+/* --------------------------------------------------------------------------
+   11. Highlights & slots (frozen geometry)
+   -------------------------------------------------------------------------- */
+.highlight {
+  position: absolute; border-radius: 3px; border: 2px solid; background: transparent;
+  cursor: pointer; padding: 0;
+}
+.highlight--critical { border-color: rgba(180, 35, 24, 0.9); background: rgba(180, 35, 24, 0.12); }
+.highlight--warning { border-color: rgba(154, 103, 0, 0.9); background: rgba(217, 164, 65, 0.14); }
+/* Signing-step slots: dashed accent, deliberately not red or amber. */
+.highlight--info { border-style: dashed; border-color: rgba(31, 111, 235, 0.8); background: rgba(31, 111, 235, 0.06); }
+.highlight--active { outline: 2px solid var(--accent); outline-offset: 2px; }
+.highlight__label {
+  position: absolute; top: -18px; left: 0; white-space: nowrap;
+  font-size: var(--text-2xs); background: var(--text); color: #fff;
+  padding: 1px var(--space-1); border-radius: 3px;
+}
+
+.slot {
+  position: absolute; border: 2px dashed var(--accent); background: rgba(31, 111, 235, 0.08);
+  border-radius: 3px; cursor: pointer; padding: 0;
+}
+/* Filled: a faint outline only, so the real signature/date underneath stays readable. */
+.slot--filled { border: 1px dashed rgba(26, 127, 75, 0.45); background: transparent; cursor: default; }
+.slot__label { font-size: var(--text-2xs); color: var(--accent); }
+.slot--filled .slot__label { color: var(--good); }
+/* Date slots: same box, thinner and muted so signature slots stay the focus. */
+.slot--date { border-width: 1px; border-color: var(--muted); background: rgba(92, 107, 122, 0.06); }
+.slot--date .slot__label { color: var(--muted); }
+.slot--date.slot--filled { border-color: rgba(26, 127, 75, 0.45); background: transparent; cursor: pointer; }
+
+/* Placed content previews the final PDF: the real signature image and the date text. */
+.pdf-overlay > .placed-signature,
+.pdf-overlay > .placed-dates { pointer-events: none; }
+.placed-signature { position: absolute; user-select: none; }
+.placed-signature--pending,
+.placed-signature--failed { display: flex; align-items: flex-end; border: 1px dashed var(--good); }
+.placed-signature--failed { border-color: var(--warn); }
+.placed-signature--failed .slot__label { color: var(--warn); }
+.placed-dates { position: absolute; left: 0; top: 0; width: 100%; height: 100%; overflow: visible; fill: #111; }
+
+/* Draggable slots (this contract only): move cursor, no touch scrolling while dragging. */
+.highlight--draggable,
+.slot--draggable,
+.slot--draggable.slot--filled,
+.pdf-overlay > .placed-signature--draggable { cursor: move; touch-action: none; user-select: none; }
+.pdf-overlay > .placed-signature--draggable { pointer-events: auto; }
+.placed-dates text.placed-date--draggable {
+  pointer-events: all; pointer-events: bounding-box; cursor: move; touch-action: none; user-select: none;
+}
+.is-dragging { outline: 2px solid var(--accent); outline-offset: 1px; opacity: 0.9; }
+.placed-dates text.is-dragging { fill: var(--accent); }
+
+/* --------------------------------------------------------------------------
+   12. Signing panel: per-slot cards, position & appearance, mode switch
+   -------------------------------------------------------------------------- */
+/* Per-slot cards in the signing panel: one signature slot plus its paired date. */
+.slot-card { padding: 10px 0; border-bottom: 1px solid var(--border); }
+.slot-card:last-child { border-bottom: none; }
+.slot-card--focused { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 4px; }
+.slot-card__row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.slot-card__title { font-weight: 600; font-size: 13px; }
+.slot-card__meta { font-size: 12px; color: var(--muted); }
+.slot-card__status { font-size: 12px; color: var(--muted); }
+.slot-card__status--done { color: var(--good); }
+.slot-card__date { margin-top: 8px; }
+.slot-card__actions { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+
+.layout-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--space-2); padding: 5px 0;
+}
+.layout-row__label { font-size: var(--text-base); flex: 1; min-width: 0; }
+.layout-row__meta { font-size: var(--text-sm); color: var(--muted); }
+.layout-row input[type='range'] { flex: 1; max-width: 160px; accent-color: var(--accent); }
+.layout-row select {
+  padding: var(--space-1) var(--space-2); border: 1px solid var(--border);
+  border-radius: var(--radius-md); font: inherit; background: var(--surface); color: var(--text);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+.layout-row select:hover { border-color: var(--border-strong); }
+.layout-row select:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px var(--accent-soft); }
+.layout-slots { margin-top: var(--space-2); padding-top: 6px; border-top: 1px solid var(--border); }
+.layout-slots .layout-row { flex-wrap: wrap; }
+.layout-row__steppers { display: inline-flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+.layout-slots h3 {
+  margin: var(--space-1) 0; font-size: var(--text-sm); text-transform: uppercase;
+  letter-spacing: var(--tracking-caps); color: var(--muted);
+}
+.stepper { display: inline-flex; align-items: center; gap: var(--space-1); flex-shrink: 0; }
+.stepper__button {
+  width: 26px; height: 24px; padding: 0; line-height: 1; font-size: var(--text-2xs); cursor: pointer;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--surface); color: var(--text);
+  transition: background-color var(--transition-fast), border-color var(--transition-fast);
+}
+.stepper__button:hover:not(:disabled) { background: var(--surface-hover); border-color: var(--border-strong); }
+.stepper__button:active:not(:disabled) { background: var(--surface-active); }
+.stepper__button:disabled { opacity: 0.4; cursor: not-allowed; }
+.stepper__value {
+  min-width: 56px; text-align: center; font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.mode-switch { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: 10px; }
+.bulk-signature { margin-bottom: var(--space-3); }
+.bulk-signature__preview { height: 96px; margin-bottom: var(--space-2); }
+.bulk-signature__coverage { margin: 10px 0 0; }
+.bulk-progress { margin-top: var(--space-3); }
+.bulk-failures { margin-top: var(--space-3); }
+.bulk-failures p { margin: 0 0 6px; }
+
+.chip {
+  border: 1px solid var(--border); background: var(--surface);
+  border-radius: var(--radius-pill); padding: var(--space-1) 10px;
+  font-family: inherit; font-size: var(--text-sm); color: var(--text);
+  cursor: pointer;
+  transition: background-color var(--transition-fast), border-color var(--transition-fast),
+              color var(--transition-fast);
+}
+.chip:hover { background: var(--surface-hover); border-color: var(--border-strong); }
+.chip:active { background: var(--surface-active); }
+.chip--active { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.chip:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* --------------------------------------------------------------------------
+   13. Review sidebar & issue list
+   -------------------------------------------------------------------------- */
+.sidebar { display: block; min-width: 0; padding-bottom: var(--space-2); }
+.sidebar__header {
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-2);
+}
+.sidebar__header h2 { font-size: var(--text-lg); margin: 0; }
+.sidebar__summary {
+  margin-bottom: var(--space-3); padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.sidebar__counts { font-size: var(--text-sm); color: var(--muted); margin: var(--space-1) 0 0; }
+.sidebar__scope { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-3); }
+.sidebar__group { margin-bottom: var(--space-4); }
+.sidebar__group-title {
+  font-size: var(--text-sm); text-transform: uppercase; letter-spacing: var(--tracking-caps);
+  color: var(--muted); margin: 0 0 6px; font-weight: var(--weight-semibold);
+}
+.sidebar__group-count { color: var(--text); }
+.sidebar__empty { color: var(--muted); font-size: var(--text-base); }
+
+.issue-list {
+  list-style: none; margin: 0; padding: 0;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.issue {
+  display: block; width: 100%; text-align: left; cursor: pointer;
+  border: 1px solid var(--border); border-left: 3px solid var(--border);
+  border-radius: var(--radius-md); padding: var(--space-2) 10px; background: var(--surface);
+  font-family: inherit; font-size: var(--text-md); color: var(--text);
+  transition: background-color var(--transition-fast), border-color var(--transition-fast),
+              box-shadow var(--transition-fast);
+}
+.issue:hover { background: var(--surface-hover); box-shadow: var(--shadow-sm); }
+.issue:active { background: var(--surface-active); }
+.issue--critical { border-left-color: var(--bad); }
+.issue--warning { border-left-color: var(--warn-mark); }
+.issue--info { border-left-color: var(--accent); border-left-style: dashed; }
+.issue--active { outline: 2px solid var(--accent); }
+.issue__label { display: block; font-weight: var(--weight-semibold); font-size: var(--text-base); }
+.issue__detail { display: block; font-size: var(--text-sm); color: var(--muted); }
+.issue__meta { display: block; font-size: var(--text-xs); color: var(--muted); margin-top: 2px; }
+
+/* Inline "Correct value" editor: an inset under the issue it belongs to, so a
+   typed value is visibly attached to one row and not to the list. */
+.issue__correct-open {
+  display: inline-block; margin: var(--space-1) 0 2px 10px; font-size: var(--text-sm);
+}
+.issue__correct {
+  display: grid; gap: var(--space-2);
+  margin: 6px 0 2px; padding: 10px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-md);
+}
+.issue__correct .field__input { font-size: var(--text-base); }
+.issue__correct-actions {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2);
+}
+
+/* --------------------------------------------------------------------------
+   14. Reviewer decision block
+   -------------------------------------------------------------------------- */
+.review__decision {
+  margin-top: var(--space-4); margin-bottom: 0;
+  border-color: var(--border-strong); box-shadow: var(--shadow-md);
+}
+.review__decision h3 {
+  margin: 0 0 var(--space-3); font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+}
+.review__decision .field__textarea { margin-top: var(--space-1); }
+.review__decision .hint { display: block; margin: 6px 0 0; }
+
+/* One blocker per line; the markup already carries a <br>, which the block
+   layout makes redundant. */
+.blocker-line { display: block; margin-top: var(--space-1); }
+.blocker-line br { display: none; }
+
+/* --------------------------------------------------------------------------
+   15. Modal & signature pad
+   -------------------------------------------------------------------------- */
+.modal {
+  position: fixed; inset: 0; background: rgba(16, 24, 40, 0.5);
+  display: flex; align-items: center; justify-content: center;
+  z-index: var(--z-modal); padding: var(--space-4);
+}
+.modal__panel {
+  background: var(--surface); border-radius: var(--radius-lg); padding: var(--space-5);
+  width: min(560px, 92vw); max-height: 92vh; overflow-y: auto;
+  box-shadow: var(--shadow-lg);
+}
+.modal__title { margin: 0 0 var(--space-1); font-size: var(--text-xl); }
+.modal__hint { color: var(--muted); font-size: var(--text-base); margin: 0 0 var(--space-3); }
+.modal__actions {
+  display: flex; flex-wrap: wrap; align-items: center;
+  gap: var(--space-2); margin-top: var(--space-3);
+}
+.modal__spacer { flex: 1; }
+.modal__extra {
+  display: flex; flex-wrap: wrap; align-items: center;
+  gap: var(--space-3) var(--space-4); margin-top: var(--space-3);
+}
+.modal__extra .alert { flex-basis: 100%; }
+
+/* --- duplicate upload warning ------------------------------------------- */
+.duplicate-list { list-style: none; margin: 0; padding: 0; max-height: 45vh; overflow-y: auto; }
+.duplicate-list__item {
+  display: grid; gap: var(--space-1); padding: var(--space-2) 0;
+  border-top: 1px solid var(--border); font-size: var(--text-base);
+}
+
+.signature-pad {
+  position: relative; border: 1px solid var(--border);
+  border-radius: var(--radius-md); background: #fff; display: inline-block;
+}
+.signature-pad__canvas { display: block; touch-action: none; cursor: crosshair; }
+.signature-pad__baseline {
+  position: absolute; left: var(--space-6); right: var(--space-6); bottom: 34px;
+  border-bottom: 1px dashed var(--border);
+}
+
+/* --------------------------------------------------------------------------
+   16. Signature upload / library
+   -------------------------------------------------------------------------- */
+.upload-preview {
+  display: flex; align-items: center; justify-content: center; min-height: 120px; max-height: 260px;
+  border: 1px solid var(--border); border-radius: var(--radius-md); overflow: hidden;
+  background: repeating-conic-gradient(#eceff3 0 25%, #fff 0 50%) 0 0 / 16px 16px;
+}
+.upload-preview--empty .upload-preview__canvas { display: none; }
+.upload-preview__canvas { max-width: 100%; max-height: 260px; width: auto; height: auto; }
+
+.sig-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--space-4);
+}
+.sig-card { margin-bottom: 0; transition: box-shadow var(--transition-fast), border-color var(--transition-fast); }
+.sig-card:hover { box-shadow: var(--shadow-md); border-color: var(--border-strong); }
+.sig-card__preview {
+  display: flex; align-items: center; justify-content: center; height: 120px; overflow: hidden;
+  border: 1px solid var(--border); border-radius: var(--radius-md);
+  background: repeating-conic-gradient(#eceff3 0 25%, #fff 0 50%) 0 0 / 16px 16px;
+}
+.sig-card__preview img { max-width: 100%; max-height: 100%; }
+.sig-card__row {
+  display: flex; justify-content: space-between; align-items: center;
+  gap: var(--space-2); margin-top: 10px;
+}
+.sig-card__title {
+  font-weight: var(--weight-semibold); display: flex; align-items: center; gap: var(--space-2);
+}
+.sig-card__meta { font-size: var(--text-sm); color: var(--muted); }
+
+/* --------------------------------------------------------------------------
+   17. Date picker
+   -------------------------------------------------------------------------- */
+.date-picker { display: block; }
+.date-picker__label {
+  display: block; font-size: var(--text-base); color: var(--muted);
+  font-weight: var(--weight-medium); margin-bottom: var(--space-1);
+}
+.date-picker__input {
+  padding: var(--space-2) 10px; border: 1px solid var(--border);
+  border-radius: var(--radius-md); font: inherit; background: var(--surface); color: var(--text);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+.date-picker__input:hover { border-color: var(--border-strong); }
+.date-picker__input:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px var(--accent-soft); }
+.date-picker__input:focus-visible { outline: none; }
+.date-picker__preview {
+  display: block; font-size: var(--text-sm); color: var(--muted); margin-top: var(--space-1);
+}
+
+/* --------------------------------------------------------------------------
+   18. Auth
+   -------------------------------------------------------------------------- */
+.auth {
+  min-height: 100vh; display: flex; align-items: center; justify-content: center;
+  padding: var(--space-5);
+}
+.auth__card { width: min(400px, 100%); box-shadow: var(--shadow-md); }
+.auth__card h1 { font-size: var(--text-2xl); margin: 0 0 var(--space-4); }
+.auth__card .button { width: 100%; margin-bottom: var(--space-2); }
+
+/* --------------------------------------------------------------------------
+   19. Utilities
+   -------------------------------------------------------------------------- */
+.visually-hidden {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* --------------------------------------------------------------------------
+   20. Responsive
+   --------------------------------------------------------------------------
+   1024px: the document / panel split stops being a split. The panel drops
+   below the document instead of squeezing it, and the fixed viewport height
+   becomes a minimum so the page can simply grow.
+   -------------------------------------------------------------------------- */
+@media (max-width: 1024px) {
+  .review {
+    flex-direction: column;
+    height: auto;
+    min-height: calc(100vh - var(--header-h));
+  }
+  /* Auto height, but still its own scroll box: a page rendered at a wider
+     viewport must scroll here, not bleed across the panel below it. */
+  .review__document { flex: 1 1 auto; height: auto; overflow: auto; }
+  .review__panel {
+    flex: 1 1 auto; min-width: 0; width: 100%;
+    border-left: none; border-top: 1px solid var(--border);
+    overflow-y: visible;
+  }
+  .review__actions { justify-content: flex-start; }
+}
+
+@media (max-width: 760px) {
+  .app__header {
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-4);
+    padding: var(--space-2) var(--space-3);
+  }
+  .app__nav { flex-wrap: wrap; gap: var(--space-3); order: 3; width: 100%; }
+  .app__user { gap: var(--space-2); }
+
+  .page { padding: var(--space-4) var(--space-3); }
+  .page__header { flex-wrap: wrap; }
+  .page__header h1 { font-size: var(--text-2xl); }
+
+  .review__document, .review__panel { padding: var(--space-2); }
+
+  .card { padding: var(--space-3); }
+  .modal__panel { padding: var(--space-4); width: min(560px, 96vw); }
+
+  /* A table this wide cannot reflow; let it scroll inside its own box. */
+  .table { display: block; overflow-x: auto; white-space: nowrap; }
+  .table__actions { flex-wrap: nowrap; }
+
+  .sig-grid { grid-template-columns: 1fr; }
+  .review__actions .button, .modal__actions .button { flex: 1 1 auto; }
+}
