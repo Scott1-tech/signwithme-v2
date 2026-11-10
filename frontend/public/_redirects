@@ -7,5 +7,5 @@
 #
 # Replace the placeholder with your Render service address, e.g.
 # https://signwithme-api.onrender.com (no trailing slash).
-/api/*  https://REPLACE-WITH-YOUR-SERVICE.onrender.com/api/:splat  200
+/api/*  https://signwithme-v2-api.onrender.com/api/:splat  200
 /*      /index.html  200
