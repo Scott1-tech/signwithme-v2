@@ -1,11 +1,6 @@
-# Cloudflare Pages routing. Rules are matched top to bottom; the first match wins.
+# Cloudflare Pages routing.
 #
-# 1. API calls go to the backend on Render. status 200 keeps the browser on the
-#    Pages address (a proxy, not a redirect), so the app stays same-origin and
-#    needs no CORS.
-# 2. Every other path serves the single-page app.
-#
-# Replace the placeholder with your Render service address, e.g.
-# https://signwithme-api.onrender.com (no trailing slash).
-/api/*  https://signwithme-v2-api.onrender.com/api/:splat  200
-/*      /index.html  200
+# /api/* is handled by the Pages Function in functions/api/[[path]].js, which
+# forwards to the backend on Render (Pages redirects cannot proxy to another
+# host). Every other path serves the single-page app.
+/*  /index.html  200
