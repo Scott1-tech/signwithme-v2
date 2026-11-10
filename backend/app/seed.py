@@ -11,6 +11,7 @@ import sys
 
 from sqlalchemy import select
 
+from app.config import DEFAULT_ADMIN_PASSWORDS, settings
 from app.core.database import SessionLocal
 from app.core.security import hash_password
 from app.models.user import User
@@ -21,6 +22,16 @@ def main() -> int:
     password = os.getenv("SEED_ADMIN_PASSWORD")
     if not email or not password:
         print("SEED_ADMIN_EMAIL and SEED_ADMIN_PASSWORD are required.", file=sys.stderr)
+        return 1
+
+    # The example password is in the public repository. Outside debug, creating
+    # the one account that can read every SSN with it is refused.
+    if not settings.debug and password in DEFAULT_ADMIN_PASSWORDS:
+        print(
+            "SEED_ADMIN_PASSWORD is still the example value; choose a real one. "
+            "No admin account was created.",
+            file=sys.stderr,
+        )
         return 1
 
     db = SessionLocal()
@@ -35,6 +46,9 @@ def main() -> int:
                 full_name=os.getenv("SEED_ADMIN_NAME", "Administrator"),
                 password_hash=hash_password(password),
                 role="admin",
+                # The operator typed this address into the server's own
+                # configuration; nobody else could have.
+                email_verified=True,
             )
         )
         db.commit()

@@ -15,7 +15,7 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 
-from tests.conftest import _promote, _register, auth
+from tests.conftest import _promote, _register, _verify_email, auth
 
 ALLOWED_KEYS = {"id", "status", "review_status", "template_id", "template_name", "created_at"}
 
@@ -138,6 +138,10 @@ def test_contractor_email_match_is_visible_like_assert_can_view_contract(
         api, admin_token, ready_template, filled_contract_bytes, contractor_email="Pat@Example.com"
     )
     pat = _register(api, "pat@example.com")
+    # Unverified, the address proves nothing: the contract stays closed.
+    assert api.get(f"/api/contracts/{addressed}", headers=auth(pat)).status_code == 403
+    assert _dups(api, pat, sha).json()["duplicates"] == []
+    _verify_email(api, "pat@example.com")
     assert api.get(f"/api/contracts/{addressed}", headers=auth(pat)).status_code == 200
     assert [d["id"] for d in _dups(api, pat, sha).json()["duplicates"]] == [addressed]
 

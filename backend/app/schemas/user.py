@@ -27,6 +27,16 @@ class UserOut(BaseModel):
     full_name: str | None
     role: str
     is_active: bool
+    email_verified: bool = False
+
+
+class AdminUserCreate(BaseModel):
+    """An account made by an admin: the admin vouches for the address."""
+
+    email: EmailStr
+    password: str = Field(min_length=8, max_length=72)
+    full_name: str | None = None
+    role: str = "contractor"
 
 
 class TokenOut(BaseModel):

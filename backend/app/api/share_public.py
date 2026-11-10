@@ -4,8 +4,10 @@
 from the URL fragment, which no browser sends to a server or in a Referer).
 
 Every request, in this order:
-  1. the socket peer (`request.client.host`, X-Forwarded-For ignored) must be
-     inside `settings.share_allowed_cidrs` -- else 404;
+  1. the client address (`client_ip`: the socket peer, or -- only when that
+     peer is a proxy named in `settings.trusted_proxy_cidrs` -- the address the
+     proxy saw; X-Forwarded-For from anyone else is ignored) must be inside
+     `settings.share_allowed_cidrs` -- else 404;
   2. the address must not be locked by `share_throttle` -- else 429;
   3. the token must name a link that is not revoked, not expired, not used
      up, whose contract is not finalised -- else the SAME 404, and one failure
@@ -30,6 +32,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.exceptions import AppError, PayloadTooLargeError
+from app.core.security import client_ip
 from app.core.throttle import share_throttle
 from app.models.contract import Contract
 from app.models.document import DocumentVersion
@@ -88,7 +91,16 @@ router = APIRouter(prefix="/api/share", tags=["share (public)"], route_class=_Pu
 
 
 def _peer(request: Request) -> str | None:
-    return request.client.host if request.client else None
+    """The requesting client's address, for the network check and the throttle.
+
+    Behind the frontend's nginx the socket peer is always the nginx container
+    -- a private address, so every visitor passed `share_allowed_cidrs`, and
+    every visitor shared one throttle bucket (20 bad tokens from anyone locked
+    out all share links). `client_ip` returns the socket peer unless that peer
+    is a proxy listed in `settings.trusted_proxy_cidrs`, in which case it
+    returns the address that proxy saw. With that setting empty (the default)
+    X-Forwarded-For is ignored exactly as before."""
+    return client_ip(request)
 
 
 def share_link(request: Request, db: Session = Depends(get_db)) -> ShareLink:

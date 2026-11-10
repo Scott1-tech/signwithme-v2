@@ -17,6 +17,10 @@ class Settings(BaseSettings):
 
     # Redis / Celery
     redis_url: str = "redis://localhost:6379/0"
+    # Run Celery tasks inside the API process instead of sending them to a
+    # worker. For hosts with no worker (Render's free plan). Slower under load:
+    # a PDF is processed while the upload request waits.
+    run_tasks_inline: bool = False
 
     # Object storage. "local" writes to storage_dir; "s3" talks to MinIO or S3.
     storage_backend: str = "s3"
@@ -28,6 +32,8 @@ class Settings(BaseSettings):
     minio_secret_key: str = "minioadmin"
     minio_bucket: str = "contracts"
     minio_secure: bool = False
+    # Cloudflare R2 takes "auto"; AWS S3 and MinIO accept "us-east-1".
+    minio_region: str = "us-east-1"
     presigned_url_ttl_seconds: int = 300
 
     # Auth
@@ -43,6 +49,19 @@ class Settings(BaseSettings):
     # Login throttling
     login_max_attempts: int = 8
     login_lockout_seconds: int = 900
+    # A second, looser limit on the e-mail alone, so rotating the source
+    # address does not buy unlimited guesses at one account.
+    login_email_max_attempts: int = 40
+
+    # Reverse proxies whose X-Forwarded-For is believed (comma-separated CIDRs
+    # or addresses). Empty = the header is ignored and the socket peer is the
+    # client. docker-compose.yml sets this to the frontend (nginx) container.
+    trusted_proxy_cidrs: str = ""
+
+    # Self-registration. Off = only an admin creates accounts
+    # (POST /api/auth/users). On, a new account still cannot see a contract
+    # addressed to its e-mail until an admin has verified that e-mail.
+    allow_self_registration: bool = True
 
     # Share-for-fill links (EDITOR-V2-PLAN §8, §11 Q4: LAN only, fill only).
     # The link handed out is `<share_base_url>/s#t=<token>` -- the token rides
@@ -76,6 +95,11 @@ class Settings(BaseSettings):
 
 
 DEFAULT_SECRETS = {"change-me-in-production", "change-me-to-a-long-random-string", ""}
+# The value .env.example ships for PII_ENCRYPTION_KEY. It is public (it is in
+# the repository), so encrypting SSNs with it is the same as not encrypting.
+DEFAULT_PII_KEYS = {"change-me-to-a-second-long-random-string"}
+# The value .env.example ships for SEED_ADMIN_PASSWORD (checked in app.seed).
+DEFAULT_ADMIN_PASSWORDS = {"change-me-admin"}
 
 
 @lru_cache
@@ -86,6 +110,13 @@ def get_settings() -> Settings:
     if not loaded.debug and loaded.jwt_secret in DEFAULT_SECRETS:
         raise RuntimeError(
             "JWT_SECRET is unset or still the example value. Generate one with: "
+            'python -c "import secrets; print(secrets.token_urlsafe(48))"'
+        )
+    # An unset key is allowed (it falls back to JWT_SECRET, which was just
+    # checked); the example value is not.
+    if not loaded.debug and loaded.pii_encryption_key in DEFAULT_PII_KEYS:
+        raise RuntimeError(
+            "PII_ENCRYPTION_KEY is still the example value. Generate one with: "
             'python -c "import secrets; print(secrets.token_urlsafe(48))"'
         )
     return loaded

@@ -232,6 +232,22 @@ def _promote(api, email: str, role: str) -> None:
         db.close()
 
 
+def _verify_email(api, email: str, verified: bool = True) -> None:
+    """Vouch for an account's e-mail, as an admin would via
+    POST /api/auth/users/{id}/verify-email."""
+    from sqlalchemy import select
+
+    from app.models.user import User
+
+    db = api.db_factory()
+    try:
+        user = db.scalar(select(User).where(User.email == email))
+        user.email_verified = verified
+        db.commit()
+    finally:
+        db.close()
+
+
 def auth(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
@@ -249,7 +265,12 @@ def admin_token(api) -> str:
 
 @pytest.fixture
 def contractor_token(api) -> str:
-    return _register(api, "driver@example.com")
+    """The driver the suite's contracts are addressed to. Their e-mail is
+    verified, so `contractor_email="driver@example.com"` opens for them; the
+    unverified case is covered in test_api_auth.py."""
+    token = _register(api, "driver@example.com")
+    _verify_email(api, "driver@example.com")
+    return token
 
 
 @pytest.fixture

@@ -247,11 +247,22 @@ def assert_can_edit_document(contract: Contract, user: User) -> None:
 
 
 def assert_can_view_contract(contract: Contract, user: User) -> None:
-    """Contractors see only their own contracts; reviewers and admins see all."""
+    """Contractors see only their own contracts; reviewers and admins see all.
+
+    "Their own" is a contract they uploaded, or one addressed to their e-mail
+    once an admin has verified that e-mail."""
     if user.role in (ROLE_ADMIN, ROLE_REVIEWER):
         return
     if contract.uploaded_by == user.id:
         return
-    if contract.contractor_email and contract.contractor_email.lower() == user.email.lower():
+    # Matching on e-mail is only as good as the proof that the account owns
+    # the address. Registration asks for none, so without `email_verified`
+    # anyone who knew a driver's address could register it first and open the
+    # driver's contract.
+    if (
+        user.email_verified
+        and contract.contractor_email
+        and contract.contractor_email.lower() == user.email.lower()
+    ):
         return
     raise PermissionError_("You do not have access to this contract")

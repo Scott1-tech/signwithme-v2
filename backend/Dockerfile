@@ -28,4 +28,6 @@ USER appuser
 
 EXPOSE 8000
 ENTRYPOINT ["/app/entrypoint.sh"]
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+# One worker: Render's free plan has 512 MB of RAM, and a second worker would
+# double the memory the PDF libraries need. docker-compose.gcp.yml sets the same.
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]

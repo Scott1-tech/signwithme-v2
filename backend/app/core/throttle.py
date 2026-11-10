@@ -73,5 +73,11 @@ class LoginThrottle(KeyedThrottle):
 
 
 login_throttle = LoginThrottle()
+# Failures against one e-mail from ANY address. Looser than the per-address
+# limit (an outsider can trip it on purpose, locking the real owner out for
+# the window), but without it a caller who rotates addresses is never slowed.
+login_email_throttle = KeyedThrottle(
+    lambda: settings.login_email_max_attempts, lambda: settings.login_lockout_seconds
+)
 # Share-link token failures per source address (EDITOR-V2-PLAN §8).
 share_throttle = KeyedThrottle(lambda: settings.share_fail_limit, lambda: settings.share_fail_window_seconds)

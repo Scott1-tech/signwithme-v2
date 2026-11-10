@@ -34,6 +34,26 @@ def _create_schema() -> None:
     from app.models import audit, contract, field, signature, template, user  # noqa: F401
 
     Base.metadata.create_all(engine)
+    _add_missing_columns(engine)
+
+
+def _add_missing_columns(engine) -> None:
+    """`create_all` never alters a table that already exists, so a column added
+    to a model after this machine's database was first created has to be added
+    here (the Postgres deployment gets it from alembic revision 0008)."""
+    from sqlalchemy import inspect, text
+
+    columns = {column["name"] for column in inspect(engine).get_columns("users")}
+    if "email_verified" not in columns:
+        with engine.begin() as connection:
+            connection.execute(
+                text("ALTER TABLE users ADD COLUMN email_verified BOOLEAN NOT NULL DEFAULT 0")
+            )
+            # Same rule as the alembic revision: staff are vouched for,
+            # self-registered contractors are verified by an admin.
+            connection.execute(
+                text("UPDATE users SET email_verified = 1 WHERE role IN ('admin', 'reviewer')")
+            )
 
 
 class _Inline:

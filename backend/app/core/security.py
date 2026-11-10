@@ -1,5 +1,7 @@
 """Password hashing, JWT issuance and the current-user dependency."""
+import ipaddress
 from datetime import datetime, timedelta, timezone
+from functools import lru_cache
 from uuid import UUID
 
 from fastapi import Depends, Request
@@ -90,8 +92,55 @@ def require_role(*roles: str):
     return _dependency
 
 
+@lru_cache(maxsize=8)
+def _networks(raw: str) -> tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]:
+    networks = []
+    for part in raw.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            networks.append(ipaddress.ip_network(part, strict=False))
+        except ValueError:
+            # A typo in the setting must not widen trust; the entry is dropped.
+            continue
+    return tuple(networks)
+
+
+def _is_trusted_proxy(address: str | None) -> bool:
+    if not address:
+        return False
+    try:
+        ip = ipaddress.ip_address(address)
+    except ValueError:
+        return False
+    return any(ip in network for network in _networks(settings.trusted_proxy_cidrs))
+
+
 def client_ip(request: Request) -> str | None:
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return request.client.host if request.client else None
+    """The address of the client that actually made this request.
+
+    `X-Forwarded-For` is whatever the sender typed unless the request came
+    through a proxy we run, so it is read ONLY when the socket peer is listed
+    in `settings.trusted_proxy_cidrs` (empty by default: the header is then
+    ignored entirely). Each proxy appends the address it saw to the right of
+    the list, so the client is the rightmost entry that is not itself one of
+    our proxies -- never the leftmost, which the client controls.
+
+    Everything that keys on an address goes through here: the login throttle,
+    the share-link network check and throttle, and the audit log.
+    """
+    peer = request.client.host if request.client else None
+    if not _is_trusted_proxy(peer):
+        return peer
+    forwarded = request.headers.get("x-forwarded-for", "")
+    for hop in reversed([part.strip() for part in forwarded.split(",") if part.strip()]):
+        try:
+            ipaddress.ip_address(hop)
+        except ValueError:
+            # Not an address at all: a forged or mangled entry. Stop here and
+            # fall back to the proxy's own address rather than believe it.
+            break
+        if not _is_trusted_proxy(hop):
+            return hop
+    return peer

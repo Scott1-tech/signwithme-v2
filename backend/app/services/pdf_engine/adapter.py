@@ -1,8 +1,9 @@
-"""The ONLY module of the application that imports PyMuPDF.
+"""One of the TWO modules of the application that import PyMuPDF.
 
 PyMuPDF is dual-licensed AGPL-3.0 / Artifex commercial (EDITOR-V2-PLAN §10.3).
-Keeping every call behind this one file keeps the dependency replaceable and
-its surface auditable: `grep -r "import pymupdf" app/` must find this file only
+Keeping every call behind two named files keeps the dependency replaceable and
+its surface auditable: `grep -r "import pymupdf" app/` must find this file (the
+document editor's engine) and `toolkit.py` (the standalone PDF tools) only
 (a test enforces it).
 
 Coordinates: PyMuPDF's `rawdict`, `add_redact_annot` and `TextWriter` all work
