@@ -1,6 +1,0 @@
-# Cloudflare Pages routing.
-#
-# /api/* is handled by the Pages Function in functions/api/[[path]].js, which
-# forwards to the backend on Render (Pages redirects cannot proxy to another
-# host). Every other path serves the single-page app.
-/*  /index.html  200
