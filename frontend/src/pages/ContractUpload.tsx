@@ -220,10 +220,6 @@ export function ContractUpload() {
             </span>
             <div>
               <h2 id="upload-step-1">Which template is this contract?</h2>
-              <p className="upload-step__hint">
-                The contract is compared field by field against this template, so the wrong choice
-                produces the wrong differences.
-              </p>
             </div>
           </div>
 
@@ -269,11 +265,9 @@ export function ContractUpload() {
                           >
                             <span className="badge badge--warn">Pre-filled template</span>
                             <span className="hint">
-                              Already contains {prefilled.signatures.filled}/
-                              {prefilled.signatures.total} signatures and {prefilled.dates.filled}/
-                              {prefilled.dates.total} dates — this looks like a signed document, not
-                              a blank form. Signatures and dates present in contracts will be
-                              treated as filled.
+                              Looks already signed ({prefilled.signatures.filled}/
+                              {prefilled.signatures.total} signatures, {prefilled.dates.filled}/
+                              {prefilled.dates.total} dates).
                             </span>
                           </span>
                         )}
@@ -295,8 +289,7 @@ export function ContractUpload() {
             <div>
               <h2 id="upload-step-2">The completed contract</h2>
               <p className="upload-step__hint" id={DROP_HINT_ID}>
-                One PDF, up to {MAX_UPLOAD_MB} MB — the signed or filled-in copy, not the blank
-                form.
+                One PDF, up to {MAX_UPLOAD_MB} MB.
               </p>
             </div>
           </div>
@@ -349,8 +342,7 @@ export function ContractUpload() {
                 </p>
                 {unreadable && (
                   <p className="hint upload-file__unreadable">
-                    The browser could not open this PDF, so there is no preview. It can still be
-                    uploaded — the server will say whether it is readable.
+                    No preview for this PDF. You can still upload it.
                   </p>
                 )}
               </div>
@@ -391,9 +383,7 @@ export function ContractUpload() {
             </span>
             <div>
               <h2 id="upload-step-3">Who is it for?</h2>
-              <p className="upload-step__hint">
-                Both fields are optional — they only make the contract easier to find later.
-              </p>
+              <p className="upload-step__hint">Optional.</p>
             </div>
           </div>
 

@@ -11,7 +11,6 @@ import {
   type Annotation,
 } from '../lib/annotations';
 import type { InitialsProgress, InitialsReport } from '../hooks/useInitials';
-import { SIGNATURE_LOCK_NOTE } from '../overlay/FreeSignatureLayer';
 import type { Signature } from '../types/contract';
 
 interface Props {
@@ -146,29 +145,19 @@ export function ObjectsSection({
   const running = initials.progress !== null;
   return (
     <div className="card" data-testid="objects-section">
-      <p className="hint" data-testid="editor-hint" data-storage={serverBacked ? 'server' : 'browser'}>
-        {serverBacked ? (
-          <>
-            Annotations are <strong>saved on the server</strong> with the document — anyone who opens
-            this contract sees them. {SIGNATURE_LOCK_NOTE}
-          </>
-        ) : (
-          <>
-            Annotations are <strong>saved in this browser only</strong> until you generate the final
-            contract — another computer will not see them. {SIGNATURE_LOCK_NOTE}
-          </>
-        )}
-      </p>
+      {/* Only the browser-only case needs saying: it is the surprising one. */}
+      {!serverBacked && (
+        <p className="hint" data-testid="editor-hint" data-storage="browser">
+          Saved in this browser only until the final contract is generated.
+        </p>
+      )}
 
       <h3 className="objects__heading">
         Annotations <span className="objects__count">({annotations.length})</span>
       </h3>
       {annotations.length === 0 ? (
         <p className="hint" data-testid="objects-empty">
-          Nothing placed yet. Pick a tool on the toolbar — Text ▾ (Add text, Date), Forms ▾, Images
-          ▾ or Annotate ▾ (Note) and click the page; Annotate ▾ (Draw), Shapes ▾ or Whiteout and drag
-          on it; Annotate ▾ (Highlight, Underline, Strikeout) and select text; or Text ▾ (Edit text)
-          and click a line of the document.
+          Nothing placed yet.
         </p>
       ) : (
         <ul className="list objects__list" data-testid="objects-list">
@@ -261,9 +250,7 @@ export function ObjectsSection({
         Free signatures <span className="objects__count">({freeSignatures.length})</span>
       </h3>
       {freeSignatures.length === 0 ? (
-        <p className="hint">
-          None. Arm the Signature tool (or Initials) and click the page to place one outside the slots.
-        </p>
+        <p className="hint">None.</p>
       ) : (
         <ul className="list objects__list" data-testid="objects-signatures">
           {freeSignatures.map((signature) => {

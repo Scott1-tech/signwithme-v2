@@ -132,9 +132,6 @@ export function MySignatures() {
         </div>
       </header>
 
-      <p className="hint">
-        Saved signatures are private to you and can be reused on any contract you sign.
-      </p>
 
       {error && !mode && <p className="alert alert--error">{error}</p>}
       {loading && <p>Loading…</p>}

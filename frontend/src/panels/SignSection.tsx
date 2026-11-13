@@ -135,12 +135,6 @@ export function SignSection({
           />
           Fill everything automatically when the page opens
         </label>
-        <p className="hint">
-          {autoFill
-            ? 'Your default saved signature is placed as soon as this page loads. You can undo it. ' +
-              'Dates are never filled in automatically — you choose them.'
-            : 'Nothing is placed until you ask for it.'}
-        </p>
 
         {autoFillNote && (
           <div className="alert alert--good" data-testid="auto-fill-note">
@@ -215,11 +209,6 @@ export function SignSection({
         <div className="card__heading">
           <h2>Signature slots</h2>
         </div>
-        <p className="hint">
-          {signMode === 'bulk'
-            ? 'What is filled right now, page by page. Switch to “Each one separately” to change a single slot.'
-            : 'Each slot takes its own signature and its own date. Hover a slot on the page for its own buttons, or use “Show” to jump to it.'}
-        </p>
         {slots.length === 0 && (
           <p className="hint">No signature slots were detected for this contract.</p>
         )}
@@ -246,9 +235,6 @@ export function SignSection({
       {freeSignatures.length > 0 && (
         <div className="card">
           <h2>Free placements</h2>
-          <p className="hint">
-            Placed by clicking on the document. Does not satisfy a signature slot.
-          </p>
           <ul className="list">
             {freeSignatures.map((signature) => (
               <li key={signature.id} className="list__item">
@@ -290,9 +276,6 @@ export function SignSection({
               Apply to all date fields
             </button>
           </div>
-          <p className="hint">
-            Fills every date field above; you can still change them one by one.
-          </p>
         </div>
       )}
     </>

@@ -109,9 +109,6 @@ export function BulkSignPanel({
       <div className="card__heading">
         <h2>One signature for everything</h2>
       </div>
-      <p className="hint">
-        Choose one signature and one date, then fill every empty slot in a single step.
-      </p>
 
       <div className="bulk-signature">
         <div className="sig-card__preview bulk-signature__preview">
@@ -166,11 +163,7 @@ export function BulkSignPanel({
       )}
 
       <p className="hint bulk-signature__coverage">
-        Applies to {pendingTargets} empty {pendingTargets === 1 ? 'place' : 'places'} (
-        {emptySignatureCount} {emptySignatureCount === 1 ? 'signature' : 'signatures'},{' '}
-        {emptyDateCount} {emptyDateCount === 1 ? 'date' : 'dates'}) out of {totalTargets} in this
-        contract.
-        {signedCount > 0 && ` ${signedCount} already signed — left untouched.`}
+        {pendingTargets} of {totalTargets} still empty.
       </p>
 
       <div className="slot-card__actions">

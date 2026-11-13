@@ -114,10 +114,6 @@ export function TemplateManager() {
 
       <form className="card" onSubmit={upload}>
         <h2>Upload a blank template</h2>
-        <p className="hint">
-          Field detection runs in the background; the template becomes available for contracts once
-          it reports <strong>ready</strong>.
-        </p>
         <label className="field">
           <span>Template name</span>
           <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Driver contract" />
@@ -191,10 +187,8 @@ export function TemplateManager() {
                   <div className="prefilled-warning" data-testid="prefilled-warning">
                     <span className="badge badge--warn">Pre-filled template</span>
                     <div className="hint">
-                      Already contains {prefilled.signatures.filled}/{prefilled.signatures.total}{' '}
-                      signatures and {prefilled.dates.filled}/{prefilled.dates.total} dates — this
-                      looks like a signed document, not a blank form. Signatures and dates present in
-                      contracts will be treated as filled.
+                      Looks already signed ({prefilled.signatures.filled}/{prefilled.signatures.total}{' '}
+                      signatures, {prefilled.dates.filled}/{prefilled.dates.total} dates).
                     </div>
                   </div>
                 )}
@@ -253,10 +247,6 @@ export function TemplateManager() {
           <h2>
             {selected.name} · {selected.field_schema.field_count} detected fields
           </h2>
-          <p className="hint">
-            Detection is good, not perfect. A misplaced signature box is the difference between a
-            signature landing on the line or beside it — correct coordinates here.
-          </p>
           {selected.field_schema.pages.map((page) => (
             <details key={page.page_number}>
               <summary>
