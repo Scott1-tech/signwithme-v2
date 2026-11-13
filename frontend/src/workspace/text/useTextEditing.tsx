@@ -553,6 +553,24 @@ export function useTextEditing({
     return map;
   }, [previewOverflow, session.ops, session.warnings]);
 
+  // The Sejda way: text that no longer fits its box simply runs on past it, in
+  // the same font and size -- no prompt in the user's way. Every overflowing
+  // edit is switched to `fit: 'overflow'` (what «Allow overlap» did) in one step.
+  useEffect(() => {
+    if (overflowByOp.size === 0) return;
+    const ids = new Set(
+      [...overflowByOp.keys()].filter((opId) => {
+        const op = session.ops.find((item) => item.id === opId);
+        return op?.kind === 'text.replace' && op.fit !== 'overflow';
+      }),
+    );
+    if (ids.size === 0) return;
+    session.changeOps('Text runs past its box', (list) =>
+      list.map((op) => (ids.has(op.id) && op.kind === 'text.replace' ? { ...op, fit: 'overflow' } : op)),
+    );
+    void session.flush();
+  }, [overflowByOp, session]);
+
   const renderLayer = useCallback(
     (page: number): ReactNode => {
       const uid = uidOf(page);
@@ -572,10 +590,7 @@ export function useTextEditing({
           if (!block || block.id === current?.block.id) return;
           const edit = editOf(block, op);
           if (!upToDate) pending.push({ block, edit, mask: masksRef.current.get(keyOf(uid, block.id)) ?? null });
-          const info = overflowByOp.get(op.id);
-          if (info) {
-            overflow.push({ opId: op.id, block, box: edit.box ?? block.bbox, ...info });
-          }
+          // No overflow prompt any more: the effect above lets such text run on.
         });
         // A block the override hides but no op or editor shows: its own text, until the page is refreshed.
         if (installed?.hide && installed.hide !== current?.block.id && !pageOps.some((op) => isTextOp(op) && op.target.block_id === installed.hide)) {
