@@ -99,6 +99,12 @@ def log(
         ip_address=ip_address,
         user_agent=(user_agent or "")[:500] or None,
     )
+    # AuditLog has foreign keys to contracts and templates but no ORM
+    # relationship, so the unit of work does not know to insert a contract or
+    # template added in the same transaction before this row. Postgres then
+    # rejects the insert (SQLite in tests does not enforce the key). Flushing
+    # first writes any pending parent rows so the reference is valid.
+    db.flush()
     db.add(entry)
     if commit:
         db.commit()
