@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { Layout } from './components/Layout';
+import { Account } from './pages/Account';
 import { useAuth } from './hooks/useAuth';
 import { ContractUpload } from './pages/ContractUpload';
 import { ContractWorkspace, WorkspaceDefaultRedirect } from './pages/ContractWorkspace';
@@ -43,6 +44,7 @@ export default function App() {
         <Route path="contracts/:contractId/:panel" element={<ContractWorkspace />} />
         <Route path="contracts/:contractId" element={<WorkspaceDefaultRedirect />} />
         <Route path="signatures" element={<MySignatures />} />
+        <Route path="account" element={<Account />} />
         <Route
           path="review"
           element={

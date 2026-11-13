@@ -19,6 +19,7 @@ export function Layout() {
           <NavLink to="/signatures">My signatures</NavLink>
           {isAtLeast('admin') && <NavLink to="/templates">Templates</NavLink>}
           {isAtLeast('reviewer') && <NavLink to="/review">Review queue</NavLink>}
+          <NavLink to="/account">Password</NavLink>
         </nav>
         <div className="app__user">
           {user && (

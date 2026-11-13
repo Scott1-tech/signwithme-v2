@@ -1,6 +1,7 @@
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Request
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -95,6 +96,35 @@ def login(payload: UserLogin, request: Request, db: Session = Depends(get_db)):
 @router.get("/me", response_model=UserOut)
 def me(user: User = Depends(get_current_user)):
     return user
+
+
+class PasswordChange(BaseModel):
+    current_password: str
+    new_password: str = Field(min_length=8, max_length=72)
+
+
+@router.post("/me/password")
+def change_password(
+    payload: PasswordChange,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Change your own password. The current one is required (and a wrong
+    one counts against the same sign-in throttle as the login form)."""
+    throttle_key = f"{user.email}|{client_ip(request) or 'unknown'}"
+    locked_for = login_throttle.is_locked(throttle_key) or login_email_throttle.is_locked(user.email)
+    if locked_for:
+        raise TooManyAttempts(f"Too many failed attempts. Try again in {locked_for} seconds.")
+    if not verify_password(payload.current_password, user.password_hash):
+        login_throttle.record_failure(throttle_key)
+        login_email_throttle.record_failure(user.email)
+        raise AuthError("The current password is not correct")
+    if payload.new_password == payload.current_password:
+        raise ValidationError("The new password must be different from the current one")
+    user.password_hash = hash_password(payload.new_password)
+    db.commit()
+    return {"changed": True}
 
 
 # --------------------------------------------------------------------------
