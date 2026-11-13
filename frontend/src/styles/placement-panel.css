@@ -1,0 +1,351 @@
+/*
+ * The signing side panel in the "Placement panel" design (design reference:
+ * Placement panel-html, Main.dc.html). Values are copied from that mockup:
+ * colours, type sizes, spacing, radii and borders.
+ *
+ * Styling only, scoped to `.workspace .workspace__panel`: no markup, behaviour
+ * or other page changes. Imported last by Workspace.tsx so it wins over the
+ * earlier panel styles.
+ *
+ * IBM Plex Sans / Mono are named first; the page's security policy does not
+ * load Google Fonts, so a computer without them installed uses its system font.
+ */
+
+.workspace .workspace__panel {
+  --pp-ink: #14202b;
+  --pp-ink-2: #3d4b5a;
+  --pp-muted: #5c6b7a;
+  --pp-line: #e1e6ec;
+  --pp-control-line: #d0d8e0;
+  --pp-input-line: #c9d2dc;
+  --pp-dashed: #9aa6b2;
+  --pp-track: #f1f4f7;
+  --pp-soft: #f5f7f9;
+  --pp-accent: #f26b1d;
+  --pp-accent-soft: #fff5ef;
+  --pp-warn-bg: #fcf1dc;
+  --pp-warn-ink: #6b4500;
+  --pp-warn-dot: #b07300;
+  --pp-sans: 'IBM Plex Sans', system-ui, sans-serif;
+  --pp-mono: 'IBM Plex Mono', ui-monospace, monospace;
+
+  background: #ffffff;
+  color: var(--pp-ink);
+  font-family: var(--pp-sans);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.workspace .workspace__panel button,
+.workspace .workspace__panel input,
+.workspace .workspace__panel select {
+  font-family: inherit;
+}
+
+.workspace .workspace__panel :is(button, input, select):focus-visible {
+  outline: 2px solid var(--pp-accent);
+  outline-offset: 2px;
+}
+
+/* -- sections: a 16 px block with a hairline under it ----------------------- */
+.workspace .workspace__panel .workspace-section {
+  border: none;
+  border-bottom: 1px solid var(--pp-line);
+  border-radius: 0;
+  background: transparent;
+  margin: 0;
+}
+
+.workspace .workspace__panel .workspace-section__toggle {
+  padding: 16px;
+  color: var(--pp-ink);
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  background: transparent;
+}
+.workspace .workspace__panel .workspace-section__toggle:hover { background: var(--pp-soft); }
+.workspace .workspace__panel .workspace-section.is-open > .workspace-section__heading > .workspace-section__toggle {
+  background: transparent;
+}
+.workspace .workspace__panel .workspace-section__chevron { color: var(--pp-muted); }
+
+/* The status badge in a heading, as the mockup's "Not approved" pill. */
+.workspace .workspace__panel .workspace-section__badge,
+.workspace .workspace__panel .badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: none;
+  border-radius: 999px;
+  background: var(--pp-warn-bg);
+  color: var(--pp-warn-ink);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.workspace .workspace__panel .badge::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--pp-warn-dot);
+}
+
+.workspace .workspace__panel .workspace-section__body {
+  padding: 0 16px 16px;
+}
+
+/* -- cards become flat groups inside the section ---------------------------- */
+.workspace .workspace__panel .card {
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+  padding: 0;
+  margin: 0 0 16px;
+}
+.workspace .workspace__panel .card:last-child { margin-bottom: 0; }
+.workspace .workspace__panel .card__heading,
+.workspace .workspace__panel .objects__heading {
+  margin: 0 0 10px;
+  color: var(--pp-ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.workspace .workspace__panel .hint {
+  margin: 6px 0 0;
+  color: var(--pp-muted);
+  font-size: 12px;
+}
+.workspace .workspace__panel .hint--error { color: #b3261e; }
+
+/* -- buttons ---------------------------------------------------------------- */
+.workspace .workspace__panel .button {
+  padding: 6px 10px;
+  border: 1px solid var(--pp-control-line);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--pp-ink);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.workspace .workspace__panel .button:hover:not(:disabled) { background: var(--pp-soft); }
+.workspace .workspace__panel .button--primary {
+  width: 100%;
+  padding: 10px 14px;
+  border: none;
+  background: var(--pp-ink);
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 600;
+}
+.workspace .workspace__panel .button--primary:hover:not(:disabled) { background: #22323f; }
+.workspace .workspace__panel .button:disabled {
+  background: var(--pp-line);
+  color: var(--pp-ink-2);
+  cursor: not-allowed;
+}
+.workspace .workspace__panel .button--link,
+.workspace .workspace__panel .btn--link {
+  padding: 4px 0;
+  border: none;
+  background: none;
+  color: var(--pp-ink-2);
+  font-size: 12px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.workspace .workspace__panel .button--link:hover:not(:disabled) { background: none; color: var(--pp-ink); }
+
+/* -- segmented controls: the signing mode chips ------------------------------ */
+.workspace .workspace__panel .mode-switch {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 9px;
+  background: var(--pp-track);
+}
+.workspace .workspace__panel .chip {
+  flex: 1;
+  padding: 7px 6px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--pp-ink);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.workspace .workspace__panel .chip--active,
+.workspace .workspace__panel .chip[aria-checked='true'] {
+  background: var(--pp-ink);
+  color: #ffffff;
+}
+
+/* -- steppers: the 40 px nudge squares and the value box ---------------------- */
+.workspace .workspace__panel .stepper { gap: 6px; }
+.workspace .workspace__panel .stepper__button {
+  min-width: 36px;
+  height: 36px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--pp-control-line);
+  border-radius: 10px;
+  background: var(--pp-soft);
+  color: var(--pp-ink);
+  cursor: pointer;
+}
+.workspace .workspace__panel .shift-pad .stepper__button {
+  width: 40px;
+  height: 40px;
+}
+.workspace .workspace__panel .stepper__button--wide {
+  padding: 0 10px;
+  border-radius: 8px;
+  background: #ffffff;
+  font-size: 12px;
+  font-weight: 500;
+}
+.workspace .workspace__panel .stepper__button:hover:not(:disabled) { background: #eaeef2; }
+.workspace .workspace__panel .stepper__value {
+  min-width: 64px;
+  height: 36px;
+  box-sizing: border-box;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  border: 1px solid var(--pp-input-line);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--pp-ink);
+  font-family: var(--pp-mono);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* -- rows: label column + control ------------------------------------------- */
+.workspace .workspace__panel .layout-group { padding: 0; border: none; }
+.workspace .workspace__panel .layout-row {
+  display: grid;
+  grid-template-columns: 100px 1fr;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 0;
+}
+.workspace .workspace__panel .layout-row__label {
+  color: var(--pp-muted);
+  font-size: 12px;
+}
+.workspace .workspace__panel .layout-row__meta {
+  color: var(--pp-muted);
+  font-size: 12px;
+}
+.workspace .workspace__panel select,
+.workspace .workspace__panel .layout-row__font {
+  height: 36px;
+  min-width: 0;
+  padding: 0 8px;
+  border: 1px solid var(--pp-input-line);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--pp-ink);
+  font-size: 13px;
+}
+.workspace .workspace__panel input[type='range'] { accent-color: var(--pp-accent); }
+.workspace .workspace__panel input[type='date'],
+.workspace .workspace__panel input[type='text'] {
+  height: 36px;
+  box-sizing: border-box;
+  padding: 0 10px;
+  border: 1px solid var(--pp-input-line);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--pp-ink);
+  font-size: 13px;
+}
+
+/* -- per-slot rows: the "Marks" list cards ----------------------------------- */
+.workspace .workspace__panel .layout-slots {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+.workspace .workspace__panel .layout-slots .layout-row {
+  grid-template-columns: 1fr auto;
+  padding: 10px 12px;
+  border: 1px solid var(--pp-line);
+  border-radius: 10px;
+  background: #ffffff;
+}
+.workspace .workspace__panel .layout-slots .layout-row__label {
+  color: var(--pp-ink);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* Lists (placed signatures, objects) in the same card style. */
+.workspace .workspace__panel .list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.workspace .workspace__panel .list__item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--pp-line);
+  border-radius: 10px;
+  background: #ffffff;
+}
+.workspace .workspace__panel .list__item.is-selected {
+  border: 1.5px solid var(--pp-accent);
+  background: var(--pp-accent-soft);
+}
+
+/* -- notices ----------------------------------------------------------------- */
+.workspace .workspace__panel .alert {
+  padding: 10px 12px;
+  border: 1px dashed var(--pp-dashed);
+  border-radius: 10px;
+  background: #ffffff;
+  color: var(--pp-ink);
+  font-size: 12px;
+}
+.workspace .workspace__panel .alert--warn {
+  border: none;
+  background: var(--pp-warn-bg);
+  color: var(--pp-warn-ink);
+}
+.workspace .workspace__panel .alert--error {
+  border: none;
+  background: #fdecea;
+  color: #8a1c14;
+}
+
+.workspace .workspace__panel .checkbox input { accent-color: var(--pp-accent); }
+
+/* -- the finalize footer, as the mockup's approve bar ------------------------ */
+.workspace .workspace__panel .finalize-bar {
+  position: sticky;
+  bottom: 0;
+  margin: 0;
+  padding: 14px 16px;
+  border-top: 1px solid var(--pp-line);
+  background: #ffffff;
+}
+.workspace .workspace__panel .finalize-bar .hint {
+  margin: 2px 0 0;
+}

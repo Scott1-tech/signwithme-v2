@@ -119,6 +119,8 @@ import '../styles/editor-f2.css';
 import { useForms } from './forms/useForms';
 import { FORM_TOOL_IDS } from './forms/fieldTools';
 import '../styles/forms.css';
+// The signing side panel in the "Placement panel" design (styling only).
+import '../styles/placement-panel.css';
 
 /** A free placement re-saves a stored library signature when the tick is on
  *  (the editor always did); a slot never did. */
