@@ -8,6 +8,7 @@ import type { Annotation } from '../lib/annotations';
 import type { FinalizeLayout, PageSizePt } from '../lib/layout';
 import type { PageIssue } from '../types/comparison';
 import type { Signature } from '../types/contract';
+import type { BBox } from '../types/field';
 import type { Gesture, Point } from '../workspace/tools/types';
 import { frameLayerStyle, normalizeQuarter } from '../lib/viewport';
 import { FreeSignatureLayer } from './FreeSignatureLayer';
@@ -63,6 +64,8 @@ export interface FreeSignatureShared {
   selectedId: string | null;
   busy: boolean;
   onRemove: (signatureId: string) => void;
+  /** The corner handle: a free signature's new box (saved on the server). */
+  onResize?: (signatureId: string, bbox: BBox) => void;
   /** W5: the free rows that are initials (`lib/initials.ts`). */
   initialIds: ReadonlySet<string>;
   /** The contract-wide signature offset / size, which the PDF applies to free rows too. */
@@ -201,6 +204,7 @@ export const PageOverlay = memo(function PageOverlay({
               selectedId={free.selectedId}
               busy={free.busy}
               onRemove={free.onRemove}
+              onResize={free.onResize}
               initialIds={free.initialIds}
               layout={free.layout}
             />

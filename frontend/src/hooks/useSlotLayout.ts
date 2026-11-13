@@ -101,10 +101,21 @@ export function useSlotLayout({ contractId, slotSet, pageSizes, slotPageSizes, s
 
   // One row per positioned slot for the per-slot nudges.
   const scaleOf = resize.scaleOf;
-  const rows = useMemo<LayoutSlotRow[]>(
-    () => buildLayoutRows({ sigSlots, dateSlots, pairedDateFor, pageSizeOf: slotPageSizeOf, layout, scaleOf }),
-    [sigSlots, dateSlots, pairedDateFor, slotPageSizeOf, layout, scaleOf],
-  );
+  const rows = useMemo<LayoutSlotRow[]>(() => {
+    // Deleted slots (contract v7) get no row in the panel.
+    const removed = new Set(layout.removed_slots ?? []);
+    return buildLayoutRows({
+      sigSlots: sigSlots.filter((slot) => !removed.has(slot.field_id)),
+      dateSlots: dateSlots.filter((slot) => !removed.has(slot.field_id)),
+      pairedDateFor: (sig) => {
+        const date = pairedDateFor(sig);
+        return date && !removed.has(date.field_id) ? date : null;
+      },
+      pageSizeOf: slotPageSizeOf,
+      layout,
+      scaleOf,
+    });
+  }, [sigSlots, dateSlots, pairedDateFor, slotPageSizeOf, layout, scaleOf]);
 
   return {
     layout,

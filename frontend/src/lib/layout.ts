@@ -87,6 +87,12 @@ export interface FinalizeLayout {
    */
   date_bold?: true;
   date_italic?: true;
+  /**
+   * Contract v7: detected slots (signature or date) the signer deleted. They
+   * are hidden on the page, not required at finalize, and print nothing.
+   * Present only when non-empty, like the v6 keys.
+   */
+  removed_slots?: string[];
 }
 
 export const DEFAULT_LAYOUT: FinalizeLayout = {
@@ -182,7 +188,49 @@ export function sanitizeLayout(raw: unknown): FinalizeLayout {
   // v6, strict like the server: only the boolean `true` means bold / italic.
   if (source.date_bold === true) layout.date_bold = true;
   if (source.date_italic === true) layout.date_italic = true;
+  // v7: deleted slots, ids only, de-duplicated and bounded like the maps.
+  if (Array.isArray(source.removed_slots)) {
+    const ids = [
+      ...new Set(
+        source.removed_slots.filter(
+          (id): id is string => typeof id === 'string' && id.length > 0 && id.length <= 200,
+        ),
+      ),
+    ].slice(0, MAX_SLOT_SCALES);
+    if (ids.length > 0) layout.removed_slots = ids;
+  }
   return layout;
+}
+
+/** Bring every deleted slot back (the same object when none is deleted). */
+export function withoutRemovedSlots(layout: FinalizeLayout): FinalizeLayout {
+  if (!layout.removed_slots) return layout;
+  const next: FinalizeLayout = { ...layout };
+  delete next.removed_slots;
+  return next;
+}
+
+/** The ids of the slots the signer deleted, as a set. */
+export const removedSlotSet = (layout: FinalizeLayout): ReadonlySet<string> =>
+  new Set(layout.removed_slots ?? []);
+
+/**
+ * Delete (`removed: true`) or bring back one detected slot. Deleting also drops
+ * the slot's own move and size, so a restored slot starts where it was found.
+ */
+export function withSlotRemoved(
+  layout: FinalizeLayout,
+  fieldId: string,
+  removed: boolean,
+): FinalizeLayout {
+  const current = layout.removed_slots ?? [];
+  const has = current.includes(fieldId);
+  if (removed === has) return layout;
+  const next: FinalizeLayout = removed
+    ? { ...withoutSlotOffsets(layout, [fieldId]), removed_slots: [...current, fieldId] }
+    : { ...layout, removed_slots: current.filter((id) => id !== fieldId) };
+  if (next.removed_slots && next.removed_slots.length === 0) delete next.removed_slots;
+  return next;
 }
 
 /**
@@ -215,7 +263,8 @@ export function isDefaultLayout(layout: FinalizeLayout): boolean {
     layout.date_font === DEFAULT_LAYOUT.date_font &&
     layout.date_font_size === DEFAULT_LAYOUT.date_font_size &&
     !layout.date_bold &&
-    !layout.date_italic
+    !layout.date_italic &&
+    !(layout.removed_slots && layout.removed_slots.length > 0)
   );
 }
 
@@ -282,8 +331,11 @@ export function layoutForRequest(
   const clean = sanitizeLayout(layout);
   const only = (map: Record<string, number>) =>
     Object.fromEntries(Object.entries(map).filter(([fieldId]) => known.has(fieldId)));
-  const { slot_offsets_x_pt: xMap, slot_scales: scaleMap, ...rest } = clean;
+  const { slot_offsets_x_pt: xMap, slot_scales: scaleMap, removed_slots: removedIds, ...rest } = clean;
   const request: FinalizeLayoutRequest = { ...rest, slot_offsets_pt: only(clean.slot_offsets_pt) };
+  // v7: only slots this contract really has; left out entirely when empty.
+  const removed = (removedIds ?? []).filter((fieldId) => known.has(fieldId));
+  if (removed.length > 0) request.removed_slots = removed;
   const x = only(xMap);
   if (Object.keys(x).length > 0) request.slot_offsets_x_pt = x;
   if (signatures) {

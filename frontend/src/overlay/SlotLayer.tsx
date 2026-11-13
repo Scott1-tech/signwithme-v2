@@ -48,6 +48,8 @@ interface Props {
   onFocusSlot: (fieldId: string) => void;
   onShowTools: (fieldId: string) => void;
   onHideTools: () => void;
+  /** Contract v7: delete this detected slot (and anything placed in it). */
+  onDeleteSlot?: (slot: SignatureSlot) => void;
 }
 
 /**
@@ -85,6 +87,7 @@ export function SlotLayer({
   onFocusSlot: focusSlot,
   onShowTools: showSlotTools,
   onHideTools: hideSlotTools,
+  onDeleteSlot: deleteSlot,
 }: Props) {
   /** Pointer/focus handlers that put a mark's slot under the mini panel. */
   const toolsHandlers = (fieldId: string) => ({
@@ -336,6 +339,7 @@ export function SlotLayer({
           onLeave={hideSlotTools}
           hasOwnSize={hasOwnScale(layout, toolsTarget.field_id)}
           onResetSize={() => resize.clear(toolsTarget.field_id)}
+          onDeleteSlot={deleteSlot ? () => deleteSlot(toolsTarget) : undefined}
         />
       )}
 

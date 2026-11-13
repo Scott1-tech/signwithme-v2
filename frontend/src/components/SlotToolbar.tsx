@@ -50,6 +50,8 @@ interface Props {
   hasOwnSize?: boolean;
   /** Give that slot back to the contract-wide `Signature size` slider. */
   onResetSize?: () => void;
+  /** Contract v7: delete the whole detected box (signature or date). */
+  onDeleteSlot?: () => void;
 }
 
 export function SlotToolbar({
@@ -67,9 +69,26 @@ export function SlotToolbar({
   onLeave,
   hasOwnSize = false,
   onResetSize,
+  onDeleteSlot,
 }: Props) {
   const below = box.top < FLIP_BELOW_PX;
   const disabled = busy || blocked;
+  // Always last: removes the box itself, so nothing is asked for or printed there.
+  const deleteBox = onDeleteSlot ? (
+    <>
+      <span className="slot-tools__divider" aria-hidden="true" />
+      <button
+        type="button"
+        className="slot-tools__button slot-tools__button--danger"
+        aria-label={`${slot.label}: delete this box`}
+        title="Delete this box: it is no longer required and nothing prints there"
+        disabled={busy}
+        onClick={onDeleteSlot}
+      >
+        Delete box
+      </button>
+    </>
+  ) : null;
   // Only offered once the corner handle has actually been used: an "auto size"
   // button on a slot that is already automatic says nothing.
   const sizeReset = slot.kind === 'signature' && hasOwnSize && onResetSize ? (
@@ -127,6 +146,7 @@ export function SlotToolbar({
               Remove
             </button>
             {sizeReset}
+            {deleteBox}
           </>
         ) : (
           <>
@@ -140,6 +160,7 @@ export function SlotToolbar({
               Sign
             </button>
             {sizeReset}
+            {deleteBox}
           </>
         )
       ) : (
@@ -165,6 +186,7 @@ export function SlotToolbar({
               Clear
             </button>
           )}
+          {deleteBox}
         </>
       )}
     </div>

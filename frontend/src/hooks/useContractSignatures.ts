@@ -74,5 +74,15 @@ export function useContractSignatures(
     [contractId],
   );
 
-  return { rows, loaded, setRows, place, remove };
+  /** Give a free row a new box (resize). Throws the server's refusal. */
+  const resize = useCallback(
+    async (signatureId: string, bbox: BBox): Promise<void> => {
+      if (!contractId) return;
+      const updated = await signaturesApi.resize(contractId, signatureId, bbox);
+      setRows((current) => current.map((row) => (row.id === signatureId ? updated : row)));
+    },
+    [contractId],
+  );
+
+  return { rows, loaded, setRows, place, remove, resize };
 }

@@ -424,15 +424,28 @@ class FinalizeLayout(BaseModel):
     # is a client bug, not a yes. Absent/false = the v5 output, byte for byte.
     date_bold: StrictBool = False
     date_italic: StrictBool = False
+    # contract v7: detected slots (signature or date) the signer deleted. They
+    # are no longer required at finalize and nothing is printed in them.
+    removed_slots: list[str] = Field(default_factory=list)
 
     def audit_record(self) -> dict:
-        """What the finalize audit entry records. `date_bold`/`date_italic` are
-        listed only when set, so a v5 body is recorded exactly as before."""
+        """What the finalize audit entry records. `date_bold`/`date_italic` and
+        `removed_slots` are listed only when set, so a v5 body is recorded
+        exactly as before."""
         record = self.model_dump()
-        for key in ("date_bold", "date_italic"):
+        for key in ("date_bold", "date_italic", "removed_slots"):
             if not record[key]:
                 del record[key]
         return record
+
+    @field_validator("removed_slots")
+    @classmethod
+    def _removed_slots_bounded(cls, value: list[str]) -> list[str]:
+        if len(value) > MAX_LAYOUT_SLOT_OFFSETS:
+            raise ValueError(f"At most {MAX_LAYOUT_SLOT_OFFSETS} removed slots are allowed")
+        if any(not isinstance(item, str) or not item or len(item) > 200 for item in value):
+            raise ValueError("removed_slots must be non-empty field ids")
+        return list(dict.fromkeys(value))
 
     @field_validator("slot_offsets_pt", "slot_offsets_x_pt")
     @classmethod

@@ -9,8 +9,21 @@ import type { ComparisonResult, SignatureSlot } from '../types/comparison';
  * between each signature and its date, so there is no separate template or
  * date-field fetch. Older comparisons may lack the bucket entirely.
  */
-export function useSignatureSlots(result: ComparisonResult | null) {
-  const slots = useMemo<SignatureSlot[]>(() => result?.signature_slots ?? [], [result]);
+const NONE_REMOVED: ReadonlySet<string> = new Set();
+
+/**
+ * `removed` (contract v7): slots the signer deleted. They are left out of
+ * every list here, so the page, the panel, bulk signing and the "still empty"
+ * counts all stop asking for them at once.
+ */
+export function useSignatureSlots(
+  result: ComparisonResult | null,
+  removed: ReadonlySet<string> = NONE_REMOVED,
+) {
+  const slots = useMemo<SignatureSlot[]>(
+    () => (result?.signature_slots ?? []).filter((slot) => !removed.has(slot.field_id)),
+    [result, removed],
+  );
   const sigSlots = useMemo(() => slots.filter((slot) => slot.kind === 'signature'), [slots]);
   const dateSlots = useMemo(() => slots.filter((slot) => slot.kind === 'date'), [slots]);
 

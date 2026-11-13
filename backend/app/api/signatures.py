@@ -49,6 +49,7 @@ from app.schemas.contract import (
     SignatureOut,
     SignaturePlacementIn,
 )
+from app.schemas.common import BBoxModel
 from app.services import audit
 from app.services.comparison_engine import (
     _index_schema,
@@ -526,6 +527,61 @@ def remove_signature(
     return {"signature_id": str(signature_id), "removed": True}
 
 
+class SignatureBoxUpdate(pydantic.BaseModel):
+    """New box for a free signature, on the page it is already on."""
+
+    model_config = pydantic.ConfigDict(extra="forbid")
+
+    bbox: BBoxModel
+
+
+@router.patch("/{contract_id}/signatures/{signature_id}", response_model=SignatureOut)
+def resize_signature(
+    contract_id: UUID,
+    signature_id: UUID,
+    update: SignatureBoxUpdate,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Resize (or move) a FREE signature on its own page.
+
+    Slot signatures are sized through the finalize layout (`slot_scales`), so
+    only rows without a `field_id` are accepted here. The old and new boxes are
+    both written to the audit trail, so the change stays explainable.
+    """
+    contract = get_contract_or_404(db, contract_id)
+    assert_can_view_contract(contract, user)
+    if contract.status == "completed":
+        raise ConflictError("Cannot change a signature on a finalised contract")
+
+    signature = db.get(Signature, signature_id)
+    if signature is None or signature.contract_id != contract.id:
+        raise NotFoundError("Signature not found on this contract")
+    _assert_can_remove_signature(signature, user)
+    if signature.field_id is not None:
+        raise ValidationError(
+            "This signature sits in a template slot; resize it with the slot's corner handle"
+        )
+
+    new_box = update.bbox.model_dump()
+    if new_box["width"] < 4 or new_box["height"] < 2:
+        raise ValidationError("The signature box is too small")
+    old_box = dict(signature.bbox or {})
+    signature.bbox = new_box
+    audit.log(
+        db,
+        audit.SIGNATURE_RESIZED,
+        contract_id=contract.id,
+        actor=user,
+        details={"signature_id": str(signature_id), "from": old_box, "to": new_box},
+        ip_address=client_ip(request),
+    )
+    db.commit()
+    db.refresh(signature)
+    return signature
+
+
 # -- annotation image assets (contract v5) --------------------------------------
 
 # Abuse bound on uploads per contract (counted from the audit trail, which is
@@ -768,7 +824,9 @@ def finalize_contract(
     pending = pending_signature_slots(
         contract.extracted_data, index, page_count=page_count, present_pages=present_pages(signed_source)
     )
-    required = [slot for slot in pending if slot["required"]]
+    # A slot the signer deleted (contract v7) is no longer asked for.
+    removed = set(layout.removed_slots)
+    required = [slot for slot in pending if slot["required"] and slot["field_id"] not in removed]
     signed_ids = {row.field_id for row in signatures if row.field_id}
     dated_ids = {placement.field_id for placement in date_placements if placement.field_id}
     missing_sigs = [
@@ -823,7 +881,7 @@ def finalize_contract(
                 dates=date_placements,
                 legacy_annotations=annotations,
                 v7=v7_placements,
-                layout=Layout(**layout.model_dump()),
+                layout=Layout(**layout.model_dump(exclude={"removed_slots"})),
                 metadata={
                     "title": f"Signed Contract - {contract.contractor_name or contract.id}",
                     **_override_metadata(contract, index),
@@ -1251,7 +1309,9 @@ def _assert_layout_slots(layout: FinalizeLayout, index: dict[str, dict], page_co
     too, not a silently ignored key. Unknown keys of all three maps are
     reported in one `unknown_slot_offsets` list.
     """
-    requested = set(layout.slot_offsets_pt) | set(layout.slot_offsets_x_pt)
+    requested = (
+        set(layout.slot_offsets_pt) | set(layout.slot_offsets_x_pt) | set(layout.removed_slots)
+    )
     if not requested and not layout.slot_scales:
         return
     paired_from = _paired_date_ids(index)

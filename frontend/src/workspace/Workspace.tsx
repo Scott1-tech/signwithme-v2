@@ -29,7 +29,14 @@ import { useSlotLayout } from '../hooks/useSlotLayout';
 import { useStoredChoice, useStoredFlag } from '../hooks/useStoredPreference';
 import { annotationsForRequest, isImage, type Annotation } from '../lib/annotations';
 import { computeSigningGate } from '../lib/gate';
-import { fitLayoutToPages, signatureScaleFor, withoutSlotOffsets } from '../lib/layout';
+import {
+  fitLayoutToPages,
+  removedSlotSet,
+  signatureScaleFor,
+  withSlotRemoved,
+  withoutRemovedSlots,
+  withoutSlotOffsets,
+} from '../lib/layout';
 import { computeOverrideState } from '../lib/reviewRules';
 import { mapRectPt, normalizeQuarter, swapsAxes, UNROTATED } from '../lib/viewport';
 import { toServerSpace } from '../lib/markupFrames';
@@ -278,8 +285,9 @@ export function Workspace() {
   const [autoFill, setAutoFill] = useStoredFlag(AUTOFILL_KEY, true);
   const autoFillRecord = useAutoFillRecord();
 
-  const slotSet = useSignatureSlots(result);
-  const { slots, sigSlots, dateSlots, slotById, sigSlotIds } = slotSet;
+  // Every detected slot, deleted ones included: the layout (which records the
+  // deletions) and the finalize body are built from this one.
+  const allSlotSet = useSignatureSlots(result);
 
   // Where the slot marks sit: ONE layout for the whole workspace (the review's
   // own `useContractLayout` + `useSlotDrag` pair is gone), so the page-edge
@@ -296,12 +304,17 @@ export function Workspace() {
     rows: layoutRows,
   } = useSlotLayout({
     contractId,
-    slotSet,
+    slotSet: allSlotSet,
     pageSizes: viewer.pageSizes,
     slotPageSizes,
     scale: viewer.scale,
     history,
   });
+
+  // Contract v7: the slots the signer deleted drop out of everything below.
+  const removedSlotIds = useMemo(() => removedSlotSet(layout), [layout]);
+  const slotSet = useSignatureSlots(result, removedSlotIds);
+  const { slots, sigSlots, dateSlots, slotById, sigSlotIds } = slotSet;
 
   const signatureIds = useMemo(() => signatures.map((signature) => signature.id), [signatures]);
   const signatureImages = useSignatureImages(contractId, signatureIds);
@@ -437,6 +450,20 @@ export function Workspace() {
       );
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not remove that signature');
+    } finally {
+      setBusy(false);
+    }
+  });
+
+  /** The corner handle of a free signature: a new box, saved and audited server-side. */
+  const resizeFreeSignature = useStableCallback(async (signatureId: string, bbox: BBox) => {
+    if (!contractId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await contractSignatures.resize(signatureId, bbox);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not resize that signature');
     } finally {
       setBusy(false);
     }
@@ -877,8 +904,9 @@ export function Workspace() {
     void sendFinalize({
       dates: dateValues,
       layout: sendLayout,
-      slotIds: slots.map((slot) => slot.field_id),
-      signatureSlotIds: sigSlots.map((slot) => slot.field_id),
+      // All detected slots, deleted ones included: `removed_slots` names them.
+      slotIds: allSlotSet.slots.map((slot) => slot.field_id),
+      signatureSlotIds: allSlotSet.sigSlots.map((slot) => slot.field_id),
       // An empty list leaves the key out (`buildFinalizeBody`).
       // ROTFIX: a v7 entry is drawn by the engine on the UNROTATED page.
       annotations: serverMarkup
@@ -1160,6 +1188,21 @@ export function Workspace() {
   const pressOpensChooser = toolId === 'signature';
   const { set: setDateValue } = dates;
   const { focusSlot, showSlotTools, hideSlotTools } = focus;
+  // Contract v7: delete a detected box. A signature already in it is removed
+  // first (stopping if that fails); a date in it is cleared. The deletion is
+  // one undo step of the layout, and "Restore deleted boxes" brings it back.
+  const deleteSlot = useStableCallback(async (slot: SignatureSlot) => {
+    const placed = slot.kind === 'signature' ? signatureForSlot(slot.field_id) : null;
+    if (placed && !(await removeSignature(placed.id))) return;
+    if (slot.kind === 'date' && dateValues[slot.field_id]) setDateValue(slot.field_id, '');
+    hideSlotTools();
+    commitLayout((current) => withSlotRemoved(current, slot.field_id, true), {
+      label: slot.kind === 'date' ? 'Delete date box' : 'Delete signature box',
+    });
+  });
+  const restoreDeletedSlots = useCallback(() => {
+    commitLayout(withoutRemovedSlots, { label: 'Restore deleted boxes' });
+  }, [commitLayout]);
   const slotShared = useMemo<SlotLayerShared>(
     () => ({
       sigSlotsByPage: sigSlotsShown,
@@ -1187,8 +1230,10 @@ export function Workspace() {
       onFocusSlot: focusSlot,
       onShowTools: showSlotTools,
       onHideTools: hideSlotTools,
+      onDeleteSlot: (slot: SignatureSlot) => void deleteSlot(slot),
     }),
     [
+      deleteSlot,
       sigSlotsShown,
       dateSlotsShown,
       slotSignaturesByPage,
@@ -1229,10 +1274,11 @@ export function Workspace() {
       selectedId: selection.signatureId,
       busy,
       onRemove: onRemoveFree,
+      onResize: (signatureId: string, bbox: BBox) => void resizeFreeSignature(signatureId, bbox),
       initialIds,
       layout: freeLayout,
     }),
-    [signatureImages, selection.signatureId, busy, onRemoveFree, initialIds, freeLayout],
+    [signatureImages, selection.signatureId, busy, onRemoveFree, resizeFreeSignature, initialIds, freeLayout],
   );
   const slotSharedTools = useMemo<SlotLayerShared>(
     () => ({ ...slotShared, toolsTarget }),
@@ -1830,6 +1876,22 @@ export function Workspace() {
             {clampNote && (
               <p className="alert alert--warn" role="status" data-testid="clamp-note">
                 {clampNote}
+              </p>
+            )}
+            {removedSlotIds.size > 0 && (
+              <p className="alert alert--info" role="status" data-testid="removed-slots-note">
+                {removedSlotIds.size === 1
+                  ? '1 detected box was deleted and is not required.'
+                  : `${removedSlotIds.size} detected boxes were deleted and are not required.`}{' '}
+                <button
+                  type="button"
+                  className="btn btn--link"
+                  disabled={busy}
+                  onClick={restoreDeletedSlots}
+                  data-testid="restore-removed-slots"
+                >
+                  Restore deleted boxes
+                </button>
               </p>
             )}
             <LayoutPanel

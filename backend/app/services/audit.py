@@ -30,6 +30,8 @@ SIGNATURE_ADDED = "signature_added"
 # placed slot, never instead of one: the per-signature trail stays complete.
 SIGNATURES_BULK_ADDED = "signatures_bulk_added"
 SIGNATURE_REMOVED = "signature_removed"
+# A free signature's box moved or resized on its own page (old and new bbox).
+SIGNATURE_RESIZED = "signature_resized"
 DATE_ADDED = "date_added"
 # An image uploaded for an `image` annotation (contract v5). Id, hash and pixel
 # size only -- never the image.

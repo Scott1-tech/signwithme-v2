@@ -151,6 +151,10 @@ export const signaturesApi = {
   remove: (contractId: string, signatureId: string) =>
     api.del<{ removed: boolean }>(`/api/contracts/${contractId}/signatures/${signatureId}`),
 
+  /** A free signature's new box on its own page (resize). Audited server-side. */
+  resize: (contractId: string, signatureId: string, bbox: BBox) =>
+    api.patch<Signature>(`/api/contracts/${contractId}/signatures/${signatureId}`, { bbox }),
+
   /**
    * The placed signature's image as the server will print it (background
    * removed, cropped to ink). Streams PNG bytes, so an authorised `fetch` in

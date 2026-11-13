@@ -577,6 +577,29 @@
 }
 .swm-sig__remove:disabled { color: var(--muted); cursor: not-allowed; }
 
+/* The corner handle that resizes a free signature (proportions kept). Shown
+   on hover or while selected, like the Remove button. */
+.swm-sig__resize {
+  position: absolute;
+  right: -7px;
+  bottom: -7px;
+  width: 12px;
+  height: 12px;
+  box-sizing: border-box;
+  border: 2px solid #fff;
+  border-radius: 3px;
+  background: var(--accent, #0277d2);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.2);
+  cursor: nwse-resize;
+  touch-action: none;
+  opacity: 0;
+  transition: opacity 0.12s;
+  z-index: 2;
+}
+.swm-sig:hover .swm-sig__resize,
+.swm-sig.is-selected .swm-sig__resize,
+.swm-sig__resize:active { opacity: 1; }
+
 @media (max-width: 1024px) {
   .editor { height: auto; min-height: calc(100vh - var(--header-h)); }
   .editor__tool-label { display: none; }
