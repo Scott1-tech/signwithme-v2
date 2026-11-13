@@ -445,11 +445,7 @@ export function Workspace() {
       initials.forgetOne(signatureId);
       // Said out loud, because the user has just been told a placed signature
       // cannot be undone: this is the other half of that bargain.
-      setNote(
-        wasInitials
-          ? 'Initials removed. Arm the Initials tool and click the page to place them again.'
-          : 'Signature removed. Arm the Signature tool and click the page to place again.',
-      );
+      setNote(wasInitials ? 'Initials removed.' : 'Signature removed.');
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Could not remove that signature');
     } finally {

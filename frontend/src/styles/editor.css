@@ -577,6 +577,9 @@
 }
 .swm-sig__remove:disabled { color: var(--muted); cursor: not-allowed; }
 
+/* A free signature is dragged to move it. */
+.swm-sig { cursor: move; touch-action: none; }
+
 /* The corner handle that resizes a free signature (proportions kept). Shown
    on hover or while selected, like the Remove button. */
 .swm-sig__resize {

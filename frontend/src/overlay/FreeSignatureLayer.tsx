@@ -13,8 +13,8 @@ const RESIZE_MIN_WIDTH_PT = 12;
 
 /** Said in one place, so the interface and the report cannot drift apart. */
 export const SIGNATURE_LOCK_NOTE =
-  'A placed signature is stored on the server, not in this browser: it cannot be dragged, ' +
-  'and Undo does not reach it. Remove it and place it again to move it.';
+  'A placed signature is saved on the server: drag it to move it, drag its corner to resize ' +
+  'it. Undo does not reach it.';
 
 interface Props {
   /** Free signatures (no template slot) on this page. */
@@ -77,41 +77,69 @@ export function FreeSignatureLayer({
   initialIds = NO_INITIALS,
   layout = NEUTRAL_LAYOUT,
 }: Props) {
-  // The box being resized, live while the corner is held; saved on release.
+  // The box being moved or resized, live while held; saved once, on release
+  // (`onResize` takes any new box on the same page: position, size or both).
   const [live, setLive] = useState<{ id: string; bbox: BBox } | null>(null);
-  const start = useRef<{ id: string; bbox: BBox; x: number } | null>(null);
+  const start = useRef<{
+    id: string;
+    bbox: BBox;
+    x: number;
+    y: number;
+    mode: 'move' | 'resize';
+  } | null>(null);
+  const tidy = (value: number) => Math.round(value * 100) / 100;
 
-  const beginResize = (event: ReactPointerEvent<HTMLElement>, signature: Signature) => {
-    if (busy || !onResize) return;
+  const begin = (
+    event: ReactPointerEvent<HTMLElement>,
+    signature: Signature,
+    mode: 'move' | 'resize',
+  ) => {
+    if (busy || !onResize || event.button !== 0) return;
     event.preventDefault();
     event.stopPropagation();
     event.currentTarget.setPointerCapture(event.pointerId);
-    start.current = { id: signature.id, bbox: signature.bbox, x: event.clientX };
+    start.current = { id: signature.id, bbox: signature.bbox, x: event.clientX, y: event.clientY, mode };
     setLive({ id: signature.id, bbox: signature.bbox });
   };
-  const moveResize = (event: ReactPointerEvent<HTMLElement>) => {
+  const beginMove = (event: ReactPointerEvent<HTMLElement>, signature: Signature) => {
+    // The Remove button and the corner handle keep their own behaviour.
+    if ((event.target as HTMLElement).closest('button, .swm-sig__resize')) return;
+    begin(event, signature, 'move');
+  };
+  const track = (event: ReactPointerEvent<HTMLElement>) => {
     const from = start.current;
     if (!from) return;
     event.stopPropagation();
+    if (from.mode === 'move') {
+      // A PDF box never starts left of or above the page (the server checks x, y >= 0).
+      const x = Math.max(0, from.bbox.x + (event.clientX - from.x) / scale);
+      const y = Math.max(0, from.bbox.y + (event.clientY - from.y) / scale);
+      setLive({ id: from.id, bbox: { ...from.bbox, x: tidy(x), y: tidy(y) } });
+      return;
+    }
     const ratio = from.bbox.height / from.bbox.width;
     const wanted = from.bbox.width + (event.clientX - from.x) / scale;
     const width = Math.min(
       from.bbox.width * RESIZE_MAX_FACTOR,
       Math.max(RESIZE_MIN_WIDTH_PT, from.bbox.width * RESIZE_MIN_FACTOR, wanted),
     );
-    const tidy = (value: number) => Math.round(value * 100) / 100;
     setLive({ id: from.id, bbox: { ...from.bbox, width: tidy(width), height: tidy(width * ratio) } });
   };
-  const endResize = (event: ReactPointerEvent<HTMLElement>) => {
+  const end = (event: ReactPointerEvent<HTMLElement>) => {
     const from = start.current;
     if (!from) return;
     event.stopPropagation();
     start.current = null;
     const result = live && live.id === from.id ? live.bbox : null;
     setLive(null);
-    if (result && onResize && (result.width !== from.bbox.width || result.height !== from.bbox.height)) {
-      onResize(from.id, result);
-    }
+    // A press without a real drag (under 1 pt) is just a click: nothing is saved.
+    const changed =
+      result &&
+      (Math.abs(result.x - from.bbox.x) >= 1 ||
+        Math.abs(result.y - from.bbox.y) >= 1 ||
+        result.width !== from.bbox.width ||
+        result.height !== from.bbox.height);
+    if (changed && result && onResize) onResize(from.id, result);
   };
 
   return (
@@ -142,7 +170,12 @@ export function FreeSignatureLayer({
             data-y-pt={signature.bbox.y.toFixed(2)}
             data-w-pt={signature.bbox.width.toFixed(2)}
             data-h-pt={signature.bbox.height.toFixed(2)}
-            title={SIGNATURE_LOCK_NOTE}
+            title={onResize ? 'Drag to move' : SIGNATURE_LOCK_NOTE}
+            // Drag the signature itself to move it (the Sejda way).
+            onPointerDown={onResize ? (event) => beginMove(event, original) : undefined}
+            onPointerMove={onResize ? track : undefined}
+            onPointerUp={onResize ? end : undefined}
+            onPointerCancel={onResize ? end : undefined}
             // Nothing that happens on a signature may reach the page's
             // click-to-place underneath it.
             onClick={(event) => event.stopPropagation()}
@@ -172,18 +205,14 @@ export function FreeSignatureLayer({
               className="swm-sig__remove"
               data-testid={`ann-sig-remove-${signature.id}`}
               disabled={busy}
-              aria-label={
-                initials
-                  ? `Remove these initials. ${SIGNATURE_LOCK_NOTE}`
-                  : `Remove this signature and place it again. ${SIGNATURE_LOCK_NOTE}`
-              }
-              title={SIGNATURE_LOCK_NOTE}
+              aria-label={initials ? 'Remove these initials' : 'Remove this signature'}
+              title="Remove"
               onClick={(event) => {
                 event.stopPropagation();
                 onRemove(signature.id);
               }}
             >
-              {initials ? 'Remove' : 'Remove and place again'}
+              Remove
             </button>
             {onResize && (
               <span
@@ -194,10 +223,10 @@ export function FreeSignatureLayer({
                 aria-valuenow={Math.round(signature.bbox.width)}
                 title="Drag to resize"
                 data-testid={`ann-sig-resize-${signature.id}`}
-                onPointerDown={(event) => beginResize(event, original)}
-                onPointerMove={moveResize}
-                onPointerUp={endResize}
-                onPointerCancel={endResize}
+                onPointerDown={(event) => begin(event, original, 'resize')}
+                onPointerMove={track}
+                onPointerUp={end}
+                onPointerCancel={end}
                 onClick={(event) => event.stopPropagation()}
               />
             )}
