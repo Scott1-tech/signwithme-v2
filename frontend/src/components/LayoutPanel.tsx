@@ -1,33 +1,21 @@
-import type { MouseEvent } from 'react';
+import { useState } from 'react';
 import { isEmbeddedFamily } from '../lib/fonts';
 import {
   DATE_FONTS,
   DATE_FONT_LABEL,
   DATE_FONT_SIZE_MAX,
   DATE_FONT_SIZE_MIN,
-  OFFSET_LIMIT,
-  OFFSET_STEP,
-  OFFSET_STEP_LARGE,
   SIGNATURE_SCALE_MAX,
-  SLOT_OFFSET_LIMIT,
   SIGNATURE_SCALE_MIN,
-  SLOT_SCALE_MAX,
-  SLOT_SCALE_MIN,
-  SLOT_SCALE_STEP,
-  SLOT_SCALE_STEP_LARGE,
   clampFontSize,
-  clampOffset,
   clampScale,
   clampToRange,
-  formatOffset,
-  formatScale,
   isDefaultLayout,
   withDateStyle,
   withSlotOffset,
   withSlotsShifted,
   type DateFont,
   type FinalizeLayout,
-  type OffsetRange,
   type ScaleRange,
   type SlotBounds,
 } from '../lib/layout';
@@ -47,208 +35,6 @@ export interface LayoutSlotRow {
   ownScale?: boolean;
 }
 
-interface StepperProps {
-  label: string;
-  value: number;
-  onChange: (value: number) => void;
-  disabled?: boolean;
-  testId?: string;
-  /** Symmetric bound; the global nudges stop at ±20 pt, per-slot ones at ±200 pt. */
-  limit?: number;
-  /** Per-slot only: the page-edge range, narrower than ±limit. */
-  range?: OffsetRange;
-  /** `vertical`: ▲ (+, up) / ▼. `horizontal`: ◀ / ▶ (+, right). */
-  axis?: 'vertical' | 'horizontal';
-}
-
-/** ▲ raises the value (moves the print up), ▼ lowers it. Shift = big step. */
-function OffsetStepper({
-  label,
-  value,
-  onChange,
-  disabled,
-  testId,
-  limit = OFFSET_LIMIT,
-  axis = 'vertical',
-  range,
-}: StepperProps) {
-  const clampValue =
-    limit === OFFSET_LIMIT ? clampOffset : (value: number) => clampToRange(value, range ?? null);
-  const max = range ? range[1] : limit;
-  const min = range ? range[0] : -limit;
-  const nudge = (direction: 1 | -1) => (event: MouseEvent<HTMLButtonElement>) =>
-    onChange(clampValue(value + direction * (event.shiftKey ? OFFSET_STEP_LARGE : OFFSET_STEP)));
-  const horizontal = axis === 'horizontal';
-  // Plus is up (vertical) or right (horizontal); minus is down or left.
-  const minusWord = horizontal ? 'left' : 'down';
-  const plusWord = horizontal ? 'right' : 'up';
-
-  const plus = (
-    <button
-      type="button"
-      className="stepper__button"
-      aria-label={`${label}: move ${plusWord}`}
-      title={`Move ${plusWord} ${OFFSET_STEP} pt (Shift: ${OFFSET_STEP_LARGE} pt)`}
-      disabled={disabled || value >= max}
-      onClick={nudge(1)}
-    >
-      {horizontal ? '▶' : '▲'}
-    </button>
-  );
-  const minus = (
-    <button
-      type="button"
-      className="stepper__button"
-      aria-label={`${label}: move ${minusWord}`}
-      title={`Move ${minusWord} ${OFFSET_STEP} pt (Shift: ${OFFSET_STEP_LARGE} pt)`}
-      disabled={disabled || value <= min}
-      onClick={nudge(-1)}
-    >
-      {horizontal ? '◀' : '▼'}
-    </button>
-  );
-
-  return (
-    <span className="stepper" data-testid={testId}>
-      {horizontal ? minus : plus}
-      <span className="stepper__value" data-testid={testId ? `${testId}-value` : undefined}>
-        {horizontal ? 'x ' : 'y '}
-        {formatOffset(value)}
-      </span>
-      {horizontal ? plus : minus}
-    </span>
-  );
-}
-
-type ShiftChange = { dx?: number; dy?: number };
-
-interface ShiftPadProps {
-  label: string;
-  testId: string;
-  disabled?: boolean;
-  /** Whether this move would change at least one slot (else the button is off). */
-  canShift: (change: ShiftChange) => boolean;
-  onShift: (change: ShiftChange) => void;
-}
-
-/**
- * ◀ ▲ ▼ ▶ for a whole group of slots at once. Each press moves every slot of
- * the group by the same step (Shift: the large step); a slot that has reached
- * its page edge stays there. Up is positive dy, right is positive dx -- the
- * same convention as the per-slot steppers and the mouse.
- */
-function ShiftPad({ label, testId, disabled, canShift, onShift }: ShiftPadProps) {
-  const directions: Array<{ word: string; glyph: string; dx: number; dy: number }> = [
-    { word: 'left', glyph: '◀', dx: -1, dy: 0 },
-    { word: 'up', glyph: '▲', dx: 0, dy: 1 },
-    { word: 'down', glyph: '▼', dx: 0, dy: -1 },
-    { word: 'right', glyph: '▶', dx: 1, dy: 0 },
-  ];
-  return (
-    <span className="stepper shift-pad" data-testid={testId}>
-      {directions.map(({ word, glyph, dx, dy }) => {
-        const unit = { dx: dx * OFFSET_STEP, dy: dy * OFFSET_STEP };
-        return (
-          <button
-            key={word}
-            type="button"
-            className="stepper__button"
-            aria-label={`${label}: move ${word}`}
-            title={`Move ${word} ${OFFSET_STEP} pt (Shift: ${OFFSET_STEP_LARGE} pt)`}
-            disabled={disabled || !canShift(unit)}
-            onClick={(event) => {
-              const step = event.shiftKey ? OFFSET_STEP_LARGE : OFFSET_STEP;
-              onShift({ dx: dx * step, dy: dy * step });
-            }}
-          >
-            {glyph}
-          </button>
-        );
-      })}
-    </span>
-  );
-}
-
-interface ScaleStepperProps {
-  label: string;
-  /** The size this slot prints at, own or inherited. */
-  value: number;
-  /** It is this slot's own size (rather than the global slider's). */
-  own: boolean;
-  /** What still fits on the page; `null`/absent means only [0.3, 3.0] applies. */
-  range?: ScaleRange;
-  disabled?: boolean;
-  testId: string;
-  onStep: (direction: 1 | -1, large: boolean) => void;
-  onClear: () => void;
-}
-
-/**
- * The keyboard way to do what the corner handle does: − / + in 5 % steps
- * (Shift: 25 %), the current percentage, and "Auto" to hand the slot back to
- * the contract-wide slider. Same clamping as the handle -- the page edge is
- * what `range` carries.
- */
-function ScaleStepper({
-  label,
-  value,
-  own,
-  range,
-  disabled,
-  testId,
-  onStep,
-  onClear,
-}: ScaleStepperProps) {
-  const max = range ? range[1] : SLOT_SCALE_MAX;
-  const min = range ? range[0] : SLOT_SCALE_MIN;
-  return (
-    <span className="stepper stepper--scale" data-testid={testId}>
-      <button
-        type="button"
-        className="stepper__button"
-        aria-label={`${label}: smaller`}
-        title={`Smaller by ${Math.round(SLOT_SCALE_STEP * 100)} % (Shift: ${Math.round(
-          SLOT_SCALE_STEP_LARGE * 100,
-        )} %)`}
-        disabled={disabled || value <= min}
-        onClick={(event) => onStep(-1, event.shiftKey)}
-      >
-        −
-      </button>
-      <span
-        className={`stepper__value${own ? ' stepper__value--own' : ''}`}
-        data-testid={`${testId}-value`}
-        title={own ? 'This slot has its own size' : 'Follows the Signature size slider'}
-      >
-        {formatScale(value)}
-        {own ? '' : ' auto'}
-      </span>
-      <button
-        type="button"
-        className="stepper__button"
-        aria-label={`${label}: larger`}
-        title={`Larger by ${Math.round(SLOT_SCALE_STEP * 100)} % (Shift: ${Math.round(
-          SLOT_SCALE_STEP_LARGE * 100,
-        )} %)`}
-        disabled={disabled || value >= max}
-        onClick={(event) => onStep(1, event.shiftKey)}
-      >
-        +
-      </button>
-      <button
-        type="button"
-        className="stepper__button stepper__button--wide"
-        aria-label={`${label}: use the global size`}
-        title="Back to the Signature size slider"
-        disabled={disabled || !own}
-        onClick={onClear}
-      >
-        Auto
-      </button>
-    </span>
-  );
-}
-
 interface Props {
   layout: FinalizeLayout;
   /**
@@ -260,285 +46,314 @@ interface Props {
   onReset: () => void;
   rows: LayoutSlotRow[];
   disabled?: boolean;
-  /** One step of a signature slot's own size (clamped to the page by the caller). */
+  /** Kept for callers; per-slot size is changed with the corner handle on the page. */
   onSlotScaleStep?: (fieldId: string, direction: 1 | -1, large: boolean) => void;
-  /** Hand a slot back to the global `Signature size` slider. */
+  /** Kept for callers; see `onSlotScaleStep`. */
   onSlotScaleClear?: (fieldId: string) => void;
 }
 
-/**
- * "Position & appearance": nudges where signatures and dates print and how
- * they look. Settings apply to the whole contract; the per-slot offsets add
- * on top of the offset for that slot's kind. The page preview follows live.
- */
-export function LayoutPanel({
-  layout,
-  onChange,
-  onReset,
-  rows,
-  disabled,
-  onSlotScaleStep,
-  onSlotScaleClear,
-}: Props) {
-  const setSlotOffset = (fieldId: string, change: { dx?: number; dy?: number }) =>
-    onChange(withSlotOffset(layout, fieldId, change));
-  // How many signature slots the global slider still speaks for, so the row
-  // says what it actually does once a slot has been resized on its own.
-  const sized = rows.filter((row) => row.kind === 'signature' && row.ownScale).length;
+type Target = 'selected' | 'signature' | 'date' | 'all';
+const TARGETS: Array<{ id: Target; label: string }> = [
+  { id: 'selected', label: 'Selected' },
+  { id: 'signature', label: 'Signatures' },
+  { id: 'date', label: 'Dates' },
+  { id: 'all', label: 'All' },
+];
+const STEPS = [0.5, 2, 10] as const;
 
-  // "Move together": the same step added to every slot's own dx/dy, each one
-  // clamped to its own page (see `withSlotsShifted`).
-  const targetsOf = (kind?: 'signature' | 'date') =>
+const signed = (value: number) =>
+  `${value > 0 ? '+' : value < 0 ? '−' : ''}${Math.abs(value).toFixed(1)}`;
+
+/* The mockup's icons, 16 px, drawn with the current text colour. */
+const Chevron = ({ d }: { d: string }) => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8"
+    strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d={d} />
+  </svg>
+);
+const CalendarIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"
+    strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <rect x="2.5" y="3.5" width="11" height="10" rx="2" />
+    <path d="M2.5 6.5h11M5.5 2v2.5M10.5 2v2.5" />
+  </svg>
+);
+const SignatureIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"
+    strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M2.5 13.5h11" />
+    <path d="M4 11c1-2 2-3.5 3-2s-.8 3 .5 2.3 2-2.6 3-2.3 1.2 1 1.5.5" />
+  </svg>
+);
+
+/**
+ * "Placement", in the Placement panel design: move the selected mark or a
+ * whole group with the nudge pad, pick a mark from the list, and set the date
+ * font and the sizes. The page preview follows live; settings apply when the
+ * final contract is generated.
+ */
+export function LayoutPanel({ layout, onChange, onReset, rows, disabled }: Props) {
+  const [target, setTarget] = useState<Target>('selected');
+  const [step, setStep] = useState<(typeof STEPS)[number]>(2);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  const selected = rows.find((row) => row.fieldId === selectedId) ?? rows[0] ?? null;
+  const groupOf = (kind?: 'signature' | 'date') =>
     rows
       .filter((row) => !kind || row.kind === kind)
       .map((row) => ({ fieldId: row.fieldId, bounds: row.bounds }));
-  const groups: Array<{ label: string; testId: string; targets: ReturnType<typeof targetsOf> }> = [
-    { label: 'Signatures together', testId: 'shift-signatures', targets: targetsOf('signature') },
-    { label: 'Dates together', testId: 'shift-dates', targets: targetsOf('date') },
-    { label: 'Everything together', testId: 'shift-everything', targets: targetsOf() },
-  ];
+  const targets =
+    target === 'selected'
+      ? selected
+        ? [{ fieldId: selected.fieldId, bounds: selected.bounds }]
+        : []
+      : groupOf(target === 'all' ? undefined : target);
+  const hasSignatures = rows.some((row) => row.kind === 'signature');
+  const hasDates = rows.some((row) => row.kind === 'date');
+
+  const nudge = (dx: number, dy: number) => {
+    if (target === 'selected' && selected) {
+      const x = layout.slot_offsets_x_pt[selected.fieldId] ?? 0;
+      const y = layout.slot_offsets_pt[selected.fieldId] ?? 0;
+      const next = withSlotOffset(layout, selected.fieldId, {
+        dx: clampToRange(x + dx, selected.bounds?.dx ?? null),
+        dy: clampToRange(y + dy, selected.bounds?.dy ?? null),
+      });
+      if (next !== layout) onChange(next, { label: 'Move mark' });
+      return;
+    }
+    const next = withSlotsShifted(layout, targets, { dx, dy });
+    if (next !== layout) onChange(next, { label: 'Move marks' });
+  };
+  const canNudge = !disabled && targets.length > 0;
+
+  const x = selected ? (layout.slot_offsets_x_pt[selected.fieldId] ?? 0) : 0;
+  const y = selected ? (layout.slot_offsets_pt[selected.fieldId] ?? 0) : 0;
+  const showXY = target === 'selected' && selected;
 
   return (
-    <div className="card" data-testid="layout-panel">
-      <div className="card__heading">
-        <h2>Position &amp; appearance</h2>
+    <div className="pp" data-testid="layout-panel">
+      <div className="pp-head">
+        <p className="pp-sub">Drag a mark on the page or nudge it here.</p>
         <button
           type="button"
-          className="button button--small"
+          className="pp-link"
           disabled={disabled || isDefaultLayout(layout)}
           onClick={onReset}
         >
           Reset
         </button>
       </div>
-      <p className="hint">
-        Moves signatures and dates on their lines. ▲ moves up by {OFFSET_STEP} pt, Shift+click
-        by {OFFSET_STEP_LARGE} pt. “Move together” shifts a whole group in any direction (◀▲▼▶, up
-        to ±{SLOT_OFFSET_LIMIT} pt, each mark stops at its page edge). Each slot can also be
-        dragged on the page (◀▶▲▼, up to ±{SLOT_OFFSET_LIMIT} pt); double-click a slot to put it
-        back. Drag the corner handle of a
-        signature to resize just that one ({Math.round(SLOT_SCALE_MIN * 100)}–
-        {Math.round(SLOT_SCALE_MAX * 100)} %, its bottom-left corner stays on the line); − and +
-        below do the same. Applied when the final contract is generated. Saved in this browser only,
-        for this contract.
-      </p>
 
       {rows.length > 0 && (
-        <div className="layout-group" data-testid="shift-group">
-          <h3>Move together</h3>
-          {groups.map((group) => (
-            <div key={group.testId} className="layout-row">
-              <span className="layout-row__label">
-                {group.label.replace(' together', '')}
-                <span className="layout-row__meta"> · {group.targets.length}</span>
-              </span>
-              <ShiftPad
-                label={group.label}
-                testId={group.testId}
-                disabled={disabled || group.targets.length === 0}
-                canShift={(change) => withSlotsShifted(layout, group.targets, change) !== layout}
-                onShift={(change) => {
-                  const next = withSlotsShifted(layout, group.targets, change);
-                  if (next !== layout) onChange(next, { label: 'Move together' });
-                }}
-              />
+        <section className="pp-section" aria-labelledby="pp-move-h">
+          <p id="pp-move-h" className="pp-title">Move</p>
+          <div className="pp-seg" role="radiogroup" aria-labelledby="pp-move-h">
+            {TARGETS.map((item) => {
+              const off =
+                (item.id === 'signature' && !hasSignatures) || (item.id === 'date' && !hasDates);
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={target === item.id}
+                  className="pp-seg__item"
+                  disabled={off}
+                  onClick={() => setTarget(item.id)}
+                >
+                  {item.label}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="pp-move">
+            <div className="pp-pad" role="group" aria-label="Nudge">
+              <span />
+              <button type="button" className="pp-pad__btn" aria-label="Nudge up" disabled={!canNudge}
+                onClick={() => nudge(0, step)}>
+                <Chevron d="M4 10l4-4 4 4" />
+              </button>
+              <span />
+              <button type="button" className="pp-pad__btn" aria-label="Nudge left" disabled={!canNudge}
+                onClick={() => nudge(-step, 0)}>
+                <Chevron d="M10 4l-4 4 4 4" />
+              </button>
+              <span className="pp-pad__dot" aria-hidden="true"><span /></span>
+              <button type="button" className="pp-pad__btn" aria-label="Nudge right" disabled={!canNudge}
+                onClick={() => nudge(step, 0)}>
+                <Chevron d="M6 4l4 4-4 4" />
+              </button>
+              <span />
+              <button type="button" className="pp-pad__btn" aria-label="Nudge down" disabled={!canNudge}
+                onClick={() => nudge(0, -step)}>
+                <Chevron d="M4 6l4 4 4-4" />
+              </button>
+              <span />
             </div>
-          ))}
-        </div>
+
+            <div className="pp-xy">
+              <span className="pp-xy__label">X</span>
+              <output className="pp-xy__value" aria-label="X offset">{showXY ? signed(x) : '—'}</output>
+              <span className="pp-xy__unit">pt</span>
+              <span className="pp-xy__label">Y</span>
+              <output className="pp-xy__value" aria-label="Y offset">{showXY ? signed(y) : '—'}</output>
+              <span className="pp-xy__unit">pt</span>
+            </div>
+          </div>
+
+          <div className="pp-step">
+            <span id="pp-step-h" className="pp-label">Step</span>
+            <div className="pp-seg pp-seg--step" role="radiogroup" aria-labelledby="pp-step-h">
+              {STEPS.map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  role="radio"
+                  aria-checked={step === value}
+                  className="pp-seg__item pp-seg__item--mono"
+                  onClick={() => setStep(value)}
+                >
+                  {value} pt
+                </button>
+              ))}
+            </div>
+          </div>
+        </section>
       )}
 
-      <div className="layout-row">
-        <span className="layout-row__label">All signatures</span>
-        <OffsetStepper
-          label="All signatures"
-          testId="offset-all-signatures"
-          value={layout.signature_offset_pt}
-          disabled={disabled}
-          onChange={(value) => onChange({ ...layout, signature_offset_pt: value })}
-        />
-      </div>
-      <div className="layout-row">
-        <span className="layout-row__label">All dates</span>
-        <OffsetStepper
-          label="All dates"
-          testId="offset-all-dates"
-          value={layout.date_offset_pt}
-          disabled={disabled}
-          onChange={(value) => onChange({ ...layout, date_offset_pt: value })}
-        />
-      </div>
-
-      <label className="layout-row">
-        <span className="layout-row__label">Signature size</span>
-        <input
-          type="range"
-          aria-label="Signature size"
-          min={Math.round(SIGNATURE_SCALE_MIN * 100)}
-          max={Math.round(SIGNATURE_SCALE_MAX * 100)}
-          step={5}
-          value={Math.round(layout.signature_scale * 100)}
-          disabled={disabled}
-          onChange={(event) =>
-            onChange(
-              { ...layout, signature_scale: clampScale(Number(event.target.value) / 100) },
-              { label: 'Signature size', coalesce: 'signature_scale' },
-            )
-          }
-        />
-        <span className="stepper__value">{Math.round(layout.signature_scale * 100)}%</span>
-      </label>
-      {sized > 0 && (
-        <p className="hint hint--tight" data-testid="own-size-note">
-          {sized === 1
-            ? '1 signature has its own size and ignores this slider.'
-            : `${sized} signatures have their own size and ignore this slider.`}{' '}
-          Use “Auto” on a row below to give it back.
-        </p>
+      {rows.length > 0 && (
+        <section className="pp-section" aria-labelledby="pp-marks-h">
+          <p id="pp-marks-h" className="pp-title">Marks</p>
+          <ul className="pp-marks">
+            {rows.map((row) => {
+              const isSelected = selected?.fieldId === row.fieldId;
+              return (
+                <li key={row.fieldId}>
+                  <button
+                    type="button"
+                    className="pp-mark"
+                    aria-pressed={isSelected}
+                    data-testid={`slot-offset-row-${row.fieldId}`}
+                    onClick={() => {
+                      setSelectedId(row.fieldId);
+                      setTarget('selected');
+                    }}
+                  >
+                    <span className="pp-mark__icon">
+                      {row.kind === 'date' ? <CalendarIcon /> : <SignatureIcon />}
+                    </span>
+                    <span className="pp-mark__text">
+                      <span className="pp-mark__name">{row.label}</span>
+                      <span className="pp-mark__meta">
+                        {row.page ? `Page ${row.page}` : 'Page unknown'}
+                        {row.kind === 'signature' && row.ownScale && row.scale
+                          ? `, ${Math.round(row.scale * 100)}%`
+                          : ''}
+                      </span>
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
       )}
 
-      <div className="layout-row">
-        <label className="layout-row__label" htmlFor="layout-date-font">
-          Date font
-        </label>
-        <span className="layout-row__font">
-          <select
-            id="layout-date-font"
-            aria-label="Date font"
-            data-testid="layout-date-font"
-            value={layout.date_font}
-            disabled={disabled}
-            onChange={(event) =>
-              onChange(
-                { ...layout, date_font: event.target.value as DateFont },
-                { label: 'Date font' },
-              )
-            }
-          >
-            {/* The same six families (two groups) as a free annotation's font box. */}
-            <optgroup label="Standard">
-              {DATE_FONTS.filter((font) => !isEmbeddedFamily(font)).map((font) => (
-                <option key={font} value={font}>
-                  {DATE_FONT_LABEL[font]}
-                </option>
-              ))}
-            </optgroup>
-            <optgroup label="Embedded">
-              {DATE_FONTS.filter(isEmbeddedFamily).map((font) => (
-                <option key={font} value={font}>
-                  {DATE_FONT_LABEL[font]}
-                </option>
-              ))}
-            </optgroup>
-          </select>
-          <span className="ws-style" role="group" aria-label="Date style">
+      <section className="pp-section pp-section--last" aria-labelledby="pp-text-h">
+        <p id="pp-text-h" className="pp-title">Text</p>
+        <div className="pp-grid">
+          <label htmlFor="layout-date-font" className="pp-label">Font</label>
+          <div className="pp-font">
+            <select
+              id="layout-date-font"
+              className="pp-select"
+              data-testid="layout-date-font"
+              value={layout.date_font}
+              disabled={disabled}
+              onChange={(event) =>
+                onChange({ ...layout, date_font: event.target.value as DateFont }, { label: 'Date font' })
+              }
+            >
+              <optgroup label="Standard">
+                {DATE_FONTS.filter((font) => !isEmbeddedFamily(font)).map((font) => (
+                  <option key={font} value={font}>{DATE_FONT_LABEL[font]}</option>
+                ))}
+              </optgroup>
+              <optgroup label="Embedded">
+                {DATE_FONTS.filter(isEmbeddedFamily).map((font) => (
+                  <option key={font} value={font}>{DATE_FONT_LABEL[font]}</option>
+                ))}
+              </optgroup>
+            </select>
             <button
               type="button"
-              className={`editor__button ws-style__button ws-style__button--bold${
-                layout.date_bold ? ' is-active' : ''
-              }`}
+              className="pp-square pp-square--bold"
               data-testid="layout-date-bold"
+              aria-label="Bold"
               aria-pressed={Boolean(layout.date_bold)}
-              aria-label="Date in bold"
-              title="Slot dates in bold"
               disabled={disabled}
-              onClick={() =>
-                onChange(withDateStyle(layout, { bold: !layout.date_bold }), { label: 'Date bold' })
-              }
+              onClick={() => onChange(withDateStyle(layout, { bold: !layout.date_bold }), { label: 'Date bold' })}
             >
               B
             </button>
             <button
               type="button"
-              className={`editor__button ws-style__button ws-style__button--italic${
-                layout.date_italic ? ' is-active' : ''
-              }`}
+              className="pp-square pp-square--italic"
               data-testid="layout-date-italic"
+              aria-label="Italic"
               aria-pressed={Boolean(layout.date_italic)}
-              aria-label="Date in italic"
-              title="Slot dates in italic"
               disabled={disabled}
               onClick={() =>
-                onChange(withDateStyle(layout, { italic: !layout.date_italic }), {
-                  label: 'Date italic',
-                })
+                onChange(withDateStyle(layout, { italic: !layout.date_italic }), { label: 'Date italic' })
               }
             >
               I
             </button>
-          </span>
-        </span>
-      </div>
+          </div>
 
-      <label className="layout-row">
-        <span className="layout-row__label">Date size</span>
-        <input
-          type="range"
-          aria-label="Date size"
-          min={DATE_FONT_SIZE_MIN}
-          max={DATE_FONT_SIZE_MAX}
-          step={0.5}
-          value={layout.date_font_size}
-          disabled={disabled}
-          onChange={(event) =>
-            onChange(
-              { ...layout, date_font_size: clampFontSize(Number(event.target.value)) },
-              { label: 'Date size', coalesce: 'date_font_size' },
-            )
-          }
-        />
-        <span className="stepper__value">{layout.date_font_size} pt</span>
-      </label>
+          <label htmlFor="pp-dsize" className="pp-label">Date size</label>
+          <div className="pp-range">
+            <input
+              id="pp-dsize"
+              type="range"
+              min={DATE_FONT_SIZE_MIN}
+              max={DATE_FONT_SIZE_MAX}
+              step={0.5}
+              value={layout.date_font_size}
+              disabled={disabled}
+              onChange={(event) =>
+                onChange(
+                  { ...layout, date_font_size: clampFontSize(Number(event.target.value)) },
+                  { label: 'Date size', coalesce: 'date_font_size' },
+                )
+              }
+            />
+            <span className="pp-range__value">{layout.date_font_size} pt</span>
+          </div>
 
-      {rows.length > 0 && (
-        <div className="layout-slots">
-          <h3>Each slot</h3>
-          {rows.map((row) => (
-            <div key={row.fieldId} className="layout-row" data-testid={`slot-offset-row-${row.fieldId}`}>
-              <span className="layout-row__label">
-                {row.label}
-                <span className="layout-row__meta">
-                  {' '}
-                  · {row.kind === 'signature' ? 'signature' : 'date'}
-                  {row.page ? ` · p.${row.page}` : ''}
-                </span>
-              </span>
-              <span className="layout-row__steppers">
-                <OffsetStepper
-                  label={`${row.label} (${row.kind})`}
-                  testId={`offset-slot-x-${row.fieldId}`}
-                  axis="horizontal"
-                  limit={SLOT_OFFSET_LIMIT}
-                  range={row.bounds?.dx}
-                  value={layout.slot_offsets_x_pt[row.fieldId] ?? 0}
-                  disabled={disabled}
-                  onChange={(value) => setSlotOffset(row.fieldId, { dx: value })}
-                />
-                <OffsetStepper
-                  label={`${row.label} (${row.kind})`}
-                  testId={`offset-slot-${row.fieldId}`}
-                  limit={SLOT_OFFSET_LIMIT}
-                  range={row.bounds?.dy}
-                  value={layout.slot_offsets_pt[row.fieldId] ?? 0}
-                  disabled={disabled}
-                  onChange={(value) => setSlotOffset(row.fieldId, { dy: value })}
-                />
-                {row.kind === 'signature' && onSlotScaleStep && onSlotScaleClear && (
-                  <ScaleStepper
-                    label={`${row.label} (${row.kind})`}
-                    testId={`slot-scale-${row.fieldId}`}
-                    value={row.scale ?? layout.signature_scale}
-                    own={Boolean(row.ownScale)}
-                    range={row.scaleBounds}
-                    disabled={disabled}
-                    onStep={(direction, large) => onSlotScaleStep(row.fieldId, direction, large)}
-                    onClear={() => onSlotScaleClear(row.fieldId)}
-                  />
-                )}
-              </span>
-            </div>
-          ))}
+          <label htmlFor="pp-ssize" className="pp-label">Signature size</label>
+          <div className="pp-range">
+            <input
+              id="pp-ssize"
+              type="range"
+              min={Math.round(SIGNATURE_SCALE_MIN * 100)}
+              max={Math.round(SIGNATURE_SCALE_MAX * 100)}
+              step={5}
+              value={Math.round(layout.signature_scale * 100)}
+              disabled={disabled}
+              onChange={(event) =>
+                onChange(
+                  { ...layout, signature_scale: clampScale(Number(event.target.value) / 100) },
+                  { label: 'Signature size', coalesce: 'signature_scale' },
+                )
+              }
+            />
+            <span className="pp-range__value">{Math.round(layout.signature_scale * 100)}%</span>
+          </div>
         </div>
-      )}
+      </section>
     </div>
   );
 }

@@ -8,7 +8,7 @@ export type SectionId = (typeof SECTION_IDS)[number];
 export const SECTION_TITLE: Record<SectionId, string> = {
   review: 'Review',
   sign: 'Signature & date',
-  layout: 'Position & appearance',
+  layout: 'Placement',
   objects: 'Objects',
 };
 

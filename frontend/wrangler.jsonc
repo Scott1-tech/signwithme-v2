@@ -12,5 +12,10 @@
     "not_found_handling": "single-page-application",
     // API calls must reach worker.js instead of being answered with index.html.
     "run_worker_first": ["/api/*"]
+  },
+  // Pings the backend every 10 minutes so Render's free plan does not put it
+  // to sleep (see `scheduled` in worker.js).
+  "triggers": {
+    "crons": ["*/10 * * * *"]
   }
 }
