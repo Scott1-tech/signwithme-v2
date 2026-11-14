@@ -59,7 +59,7 @@
   cursor: nwse-resize;
 }
 .workspace .ws-capture__link { fill: rgba(0, 153, 255, 0.12); stroke: #0099ff; stroke-dasharray: 4 3; }
-.workspace .ws-capture__redact { fill: rgba(0, 0, 0, 0.55); stroke: #000; }
+.workspace .ws-capture__redact { fill: rgba(220, 38, 38, 0.12); stroke: #dc2626; }
 
 /* -- pictures of the PDF (Delete original image) --------------------------- */
 .workspace .ws-page-images { position: absolute; inset: 0; pointer-events: none; z-index: 5; }
@@ -79,7 +79,14 @@
 
 /* -- what the draft will do (until saved) -------------------------------- */
 .workspace .ws-pending-ops { position: absolute; inset: 0; pointer-events: none; z-index: 4; }
-.workspace .ws-redact-pending { position: absolute; background: #000; pointer-events: none; }
+/* An erased area before it is saved: shown as blank paper with a dashed frame
+   (the content is removed and nothing is painted there). */
+.workspace .ws-redact-pending {
+  position: absolute;
+  background: #fff;
+  outline: 1px dashed #dc2626;
+  pointer-events: none;
+}
 .workspace .ws-image-removed {
   position: absolute;
   border: 1px dashed #dc2626;

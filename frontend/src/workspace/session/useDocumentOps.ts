@@ -72,9 +72,12 @@ export function useDocumentOps({ session, shownUids, setNote }: Options) {
       if (!uid) return;
       void change('Redact', (list) => [
         ...list,
-        { id: newOpId(), kind: 'redact', page_uid: uid, rects: [toRect(box)], fill: 'black' },
+        // `fill: 'none'`: the lines, text and pictures inside the box are taken
+        // out of the PDF's own content and NOTHING is painted in their place
+        // (no black or white box) -- the way to delete a ruled line.
+        { id: newOpId(), kind: 'redact', page_uid: uid, rects: [toRect(box)], fill: 'none' },
       ]).then((done) => {
-        if (done) setNote('Redacted: the content under the black box is removed from the file when you save.');
+        if (done) setNote('Erased: what is inside the box is removed from the file when you save.');
       });
     },
     [change, setNote, uidOf],

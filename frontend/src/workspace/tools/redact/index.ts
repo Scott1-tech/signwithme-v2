@@ -7,9 +7,9 @@ import { redactTool } from '../drawing';
  * only hides; Redact deletes.
  */
 export default redactTool({
-  label: 'Redact',
-  glyph: '▇',
-  hint: 'Drag a box: permanently removes the content under it from the file (Whiteout only hides it)',
+  label: 'Erase',
+  glyph: '⌫',
+  hint: 'Drag a box around a line, text or picture: it is removed from the PDF itself and nothing is painted over it',
   group: 'whiteout',
   order: 20,
   menu: 'whiteout',
