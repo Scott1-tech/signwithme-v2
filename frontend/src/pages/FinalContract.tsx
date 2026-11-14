@@ -2,21 +2,11 @@ import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { contractsApi } from '../api/contracts';
 import { tokenStore } from '../api/client';
-import { formatServerDateTime } from '../lib/time';
 import type { ContractDetail } from '../types/contract';
-
-interface AuditEntry {
-  action: string;
-  actor_email: string | null;
-  actor_role: string | null;
-  details: Record<string, unknown>;
-  timestamp: string;
-}
 
 export function FinalContract() {
   const { contractId } = useParams<{ contractId: string }>();
   const [contract, setContract] = useState<ContractDetail | null>(null);
-  const [audit, setAudit] = useState<AuditEntry[]>([]);
   const [verification, setVerification] = useState<{ intact: boolean; current_hash: string } | null>(
     null,
   );
@@ -28,7 +18,6 @@ export function FinalContract() {
       .get(contractId)
       .then(setContract)
       .catch((cause) => setError(cause instanceof Error ? cause.message : 'Failed to load'));
-    contractsApi.auditTrail(contractId).then(setAudit).catch(() => undefined);
     contractsApi.verifyFinal(contractId).then(setVerification).catch(() => undefined);
   }, [contractId]);
 
@@ -90,32 +79,6 @@ export function FinalContract() {
         </div>
       )}
 
-      {audit.length > 0 && (
-        <div className="card">
-          <h2>Audit trail</h2>
-          <table className="table table--compact">
-            <thead>
-              <tr>
-                <th>When</th>
-                <th>Action</th>
-                <th>Actor</th>
-              </tr>
-            </thead>
-            <tbody>
-              {audit.map((entry, index) => (
-                <tr key={`${entry.action}-${index}`}>
-                  <td>{formatServerDateTime(entry.timestamp)}</td>
-                  <td>{entry.action.replace(/_/g, ' ')}</td>
-                  <td>
-                    {entry.actor_email ?? 'system'}
-                    {entry.actor_role ? ` (${entry.actor_role})` : ''}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
     </section>
   );
 }

@@ -113,7 +113,9 @@ export function ComparisonSidebar({
         </p>
       )}
 
-      {KIND_ORDER.map((kind) => {
+      {/* Signature / date slots are not listed here: they are signed in the
+          signing section, and a 40-page package has dozens of them. */}
+      {KIND_ORDER.filter((kind) => kind !== 'signature_slot').map((kind) => {
         const group = grouped.get(kind) ?? [];
         if (group.length === 0) return null;
         return (

@@ -205,6 +205,9 @@ export function SignSection({
         />
       )}
 
+      {/* The page-by-page list is only shown when signing each slot separately;
+          in "One for all" it was a long list that nobody needs to read. */}
+      {signMode === 'slot' && (
       <div className="card">
         <div className="card__heading">
           <h2>Signature slots</h2>
@@ -231,6 +234,7 @@ export function SignSection({
           cardId={slotCardId}
         />
       </div>
+      )}
 
       {freeSignatures.length > 0 && (
         <div className="card">

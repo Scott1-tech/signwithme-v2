@@ -70,6 +70,18 @@ class Rect(_Strict):
     h_pt: float = Field(gt=0, **_finite)
 
 
+class RectOut(BaseModel):
+    """A rect the SERVER reports. Unlike `Rect` (client input) it may be
+    zero-size: Docusign's hidden envelope field is a 0 x 0 widget, and
+    refusing to describe it made `GET .../fields` fail (500) for every
+    Docusign-signed document, so the editor could not open them."""
+
+    x_pt: float
+    y_pt: float
+    w_pt: float = Field(ge=0)
+    h_pt: float = Field(ge=0)
+
+
 class TextRunStyle(_Strict):
     text: str = Field(min_length=1, max_length=MAX_TEXT_CHARS)
     font: FontFamilyId
@@ -725,7 +737,7 @@ class FieldOut(BaseModel):
     name: str
     type: Literal["text", "multiline", "dropdown", "radio", "checkbox", "signature", "other"]
     page_uid: str
-    rect: Rect
+    rect: RectOut
     required: bool
     readonly: bool
     tooltip: str | None

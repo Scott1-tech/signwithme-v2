@@ -136,7 +136,10 @@ def remove_background(rgba: Image.Image) -> Image.Image | None:
     inked = sum(alpha_histogram[INK_ALPHA_THRESHOLD:])
     if inked == 0 or sum(alpha_histogram[128:]) > MAX_PLAUSIBLE_INK * total:
         return None
-    result = _defringe(rgb, paper, distance, alpha)
+    # The uploaded colours are kept exactly as they are: only the paper becomes
+    # transparent. (The earlier defringe step darkened the ink to avoid a pale
+    # edge, which visibly changed the colour of an uploaded signature.)
+    result = rgb.copy()
     result.putalpha(alpha)
     return result
 

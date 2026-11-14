@@ -9,10 +9,8 @@ import {
   SIGNATURE_SCALE_MIN,
   clampFontSize,
   clampScale,
-  clampToRange,
   isDefaultLayout,
   withDateStyle,
-  withSlotOffset,
   withSlotsShifted,
   type DateFont,
   type FinalizeLayout,
@@ -52,17 +50,13 @@ interface Props {
   onSlotScaleClear?: (fieldId: string) => void;
 }
 
-type Target = 'selected' | 'signature' | 'date' | 'all';
+type Target = 'signature' | 'date' | 'all';
 const TARGETS: Array<{ id: Target; label: string }> = [
-  { id: 'selected', label: 'Selected' },
   { id: 'signature', label: 'Signatures' },
   { id: 'date', label: 'Dates' },
   { id: 'all', label: 'All' },
 ];
 const STEPS = [0.5, 2, 10] as const;
-
-const signed = (value: number) =>
-  `${value > 0 ? '+' : value < 0 ? '−' : ''}${Math.abs(value).toFixed(1)}`;
 
 /* The mockup's icons, 16 px, drawn with the current text colour. */
 const Chevron = ({ d }: { d: string }) => (
@@ -71,21 +65,6 @@ const Chevron = ({ d }: { d: string }) => (
     <path d={d} />
   </svg>
 );
-const CalendarIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"
-    strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-    <rect x="2.5" y="3.5" width="11" height="10" rx="2" />
-    <path d="M2.5 6.5h11M5.5 2v2.5M10.5 2v2.5" />
-  </svg>
-);
-const SignatureIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"
-    strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-    <path d="M2.5 13.5h11" />
-    <path d="M4 11c1-2 2-3.5 3-2s-.8 3 .5 2.3 2-2.6 3-2.3 1.2 1 1.5.5" />
-  </svg>
-);
-
 /**
  * "Placement", in the Placement panel design: move the selected mark or a
  * whole group with the nudge pad, pick a mark from the list, and set the date
@@ -93,44 +72,20 @@ const SignatureIcon = () => (
  * final contract is generated.
  */
 export function LayoutPanel({ layout, onChange, onReset, rows, disabled }: Props) {
-  const [target, setTarget] = useState<Target>('selected');
+  const [target, setTarget] = useState<Target>('all');
   const [step, setStep] = useState<(typeof STEPS)[number]>(2);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  const selected = rows.find((row) => row.fieldId === selectedId) ?? rows[0] ?? null;
-  const groupOf = (kind?: 'signature' | 'date') =>
-    rows
-      .filter((row) => !kind || row.kind === kind)
-      .map((row) => ({ fieldId: row.fieldId, bounds: row.bounds }));
-  const targets =
-    target === 'selected'
-      ? selected
-        ? [{ fieldId: selected.fieldId, bounds: selected.bounds }]
-        : []
-      : groupOf(target === 'all' ? undefined : target);
+  const targets = rows
+    .filter((row) => target === 'all' || row.kind === target)
+    .map((row) => ({ fieldId: row.fieldId, bounds: row.bounds }));
   const hasSignatures = rows.some((row) => row.kind === 'signature');
   const hasDates = rows.some((row) => row.kind === 'date');
 
   const nudge = (dx: number, dy: number) => {
-    if (target === 'selected' && selected) {
-      const x = layout.slot_offsets_x_pt[selected.fieldId] ?? 0;
-      const y = layout.slot_offsets_pt[selected.fieldId] ?? 0;
-      const next = withSlotOffset(layout, selected.fieldId, {
-        dx: clampToRange(x + dx, selected.bounds?.dx ?? null),
-        dy: clampToRange(y + dy, selected.bounds?.dy ?? null),
-      });
-      if (next !== layout) onChange(next, { label: 'Move mark' });
-      return;
-    }
     const next = withSlotsShifted(layout, targets, { dx, dy });
     if (next !== layout) onChange(next, { label: 'Move marks' });
   };
   const canNudge = !disabled && targets.length > 0;
-
-  const x = selected ? (layout.slot_offsets_x_pt[selected.fieldId] ?? 0) : 0;
-  const y = selected ? (layout.slot_offsets_pt[selected.fieldId] ?? 0) : 0;
-  const showXY = target === 'selected' && selected;
-
   return (
     <div className="pp" data-testid="layout-panel">
       <div className="pp-head">
@@ -193,14 +148,6 @@ export function LayoutPanel({ layout, onChange, onReset, rows, disabled }: Props
               <span />
             </div>
 
-            <div className="pp-xy">
-              <span className="pp-xy__label">X</span>
-              <output className="pp-xy__value" aria-label="X offset">{showXY ? signed(x) : '—'}</output>
-              <span className="pp-xy__unit">pt</span>
-              <span className="pp-xy__label">Y</span>
-              <output className="pp-xy__value" aria-label="Y offset">{showXY ? signed(y) : '—'}</output>
-              <span className="pp-xy__unit">pt</span>
-            </div>
           </div>
 
           <div className="pp-step">
@@ -220,44 +167,6 @@ export function LayoutPanel({ layout, onChange, onReset, rows, disabled }: Props
               ))}
             </div>
           </div>
-        </section>
-      )}
-
-      {rows.length > 0 && (
-        <section className="pp-section" aria-labelledby="pp-marks-h">
-          <p id="pp-marks-h" className="pp-title">Marks</p>
-          <ul className="pp-marks">
-            {rows.map((row) => {
-              const isSelected = selected?.fieldId === row.fieldId;
-              return (
-                <li key={row.fieldId}>
-                  <button
-                    type="button"
-                    className="pp-mark"
-                    aria-pressed={isSelected}
-                    data-testid={`slot-offset-row-${row.fieldId}`}
-                    onClick={() => {
-                      setSelectedId(row.fieldId);
-                      setTarget('selected');
-                    }}
-                  >
-                    <span className="pp-mark__icon">
-                      {row.kind === 'date' ? <CalendarIcon /> : <SignatureIcon />}
-                    </span>
-                    <span className="pp-mark__text">
-                      <span className="pp-mark__name">{row.label}</span>
-                      <span className="pp-mark__meta">
-                        {row.page ? `Page ${row.page}` : 'Page unknown'}
-                        {row.kind === 'signature' && row.ownScale && row.scale
-                          ? `, ${Math.round(row.scale * 100)}%`
-                          : ''}
-                      </span>
-                    </span>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
         </section>
       )}
 
