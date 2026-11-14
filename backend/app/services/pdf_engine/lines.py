@@ -237,12 +237,20 @@ def assemble(raw_blocks: list[RawBlock], separators: list[Separator] | None = No
 
     finished: list[tuple[tuple[float, float], Block]] = []
     for group in groups:
-        if group.horizontal:
-            lines = _sorted_lines(group.lines)
-        else:  # rotated / vertical text: keep MuPDF's order
-            lines = sorted(group.lines, key=lambda line: order_in_stream.get(id(line), 0))
         raws = sorted(group.raw)
         reason = next((raw_blocks[bi].reason for bi in raws if raw_blocks[bi].reason), None)
+        if group.horizontal:
+            # One block per LINE (the Sejda way): a click edits the line under
+            # the pointer, never the whole paragraph around it. Each block is
+            # exactly as large as its own line.
+            for line in _sorted_lines(group.lines):
+                finished.append(
+                    ((round(line.baseline, 2), round(_x0(line), 2)),
+                     Block(id="", bbox=line.bbox, lines=[line], editable=reason is None, reason=reason))
+                )
+            continue
+        # Rotated / vertical text: keep MuPDF's grouping and order.
+        lines = sorted(group.lines, key=lambda line: order_in_stream.get(id(line), 0))
         bbox = union([raw_blocks[bi].bbox for bi in raws] + [line.bbox for line in lines])
         first = lines[0]
         finished.append(
