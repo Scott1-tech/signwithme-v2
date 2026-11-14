@@ -1,6 +1,10 @@
 import type { AnnotationFont } from '../../../lib/annotations';
 import type { TextRun } from '../../../lib/textRuns';
+import { placementSpot } from '../shared';
 import type { ToolDefinition } from '../types';
+
+/** Width of a new text box added by a click outside the document's text. */
+const NEW_TEXT_WIDTH_PT = 200;
 
 /**
  * Edit text v2 (F1b, EDITOR-V2-PLAN §7 «Mavjud matnni tahrirlash»): change
@@ -46,11 +50,38 @@ const editText: ToolDefinition = {
   menu: 'text',
   cursor: 'text',
   input: 'text-run',
-  placesOnClick: false,
+  // One tool for both, like Sejda: a click on a line of the document edits
+  // that line (the block layer takes the click); a click anywhere else -- empty
+  // paper, a ruled line, a "____" blank -- adds NEW text there, as a text box.
+  placesOnClick: true,
   needsTextLayer: true,
-  properties: [],
+  properties: ['font', 'style', 'size', 'color', 'textbox'],
+  defaultColor: 'black',
   onTextRun(ctx) {
     ctx.notify(EDIT_TEXT_UNAVAILABLE);
+  },
+  onPageClick(ctx, pt) {
+    const spot = placementSpot(ctx, pt);
+    if (!spot) return;
+    const pageWidth = ctx.pageSize?.width ?? spot.x + NEW_TEXT_WIDTH_PT;
+    const size = Math.min(72, Math.max(6, ctx.props.size));
+    ctx.openTextbox({
+      id: null,
+      page: ctx.page,
+      x_pt: spot.x,
+      // The click is where the text should SIT (on the line), so the box
+      // starts one line above it.
+      y_pt: Math.max(0, spot.y - size),
+      w_pt: Math.max(24, Math.min(NEW_TEXT_WIDTH_PT, pageWidth - spot.x - 4)),
+      value: '',
+      font: ctx.props.boxFont,
+      size_pt: size,
+      color: ctx.props.color,
+      bold: ctx.props.bold,
+      italic: ctx.props.italic,
+      align: ctx.props.v7.align,
+      line_height: ctx.props.v7.lineHeight,
+    });
   },
 };
 

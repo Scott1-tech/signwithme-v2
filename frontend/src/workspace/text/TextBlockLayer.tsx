@@ -64,6 +64,57 @@ interface Props {
   children?: ReactNode;
 }
 
+/** A run of at least this many '_' in a row is a blank to fill in, not text to edit. */
+const BLANK_MIN_CHARS = 3;
+
+/**
+ * The clickable part of a block, as a CSS `clip-path`: everything except its
+ * fill-in blanks (runs of '_'). A click on a blank falls through to the page,
+ * where the tool adds NEW text on the line (the Sejda way) -- the words next to
+ * the blank are not touched and do not move. `undefined`: no blanks, the whole
+ * box is clickable. A block that is only a blank is not clickable at all.
+ */
+function clickableClip(block: EditableBlock, scale: number): string | undefined {
+  const blanks: Array<[number, number]> = [];
+  let start: number | null = null;
+  let end = 0;
+  let count = 0;
+  const close = () => {
+    if (start !== null && count >= BLANK_MIN_CHARS) blanks.push([start, end]);
+    start = null;
+    count = 0;
+  };
+  block.chars.forEach((char) => {
+    if (char.c === '_') {
+      if (start === null) start = char.x0;
+      end = char.x1;
+      count += 1;
+    } else {
+      close();
+    }
+  });
+  close();
+  if (blanks.length === 0) return undefined;
+
+  const left = block.bbox.x;
+  const right = block.bbox.x + block.bbox.w;
+  const height = Math.max(2, block.bbox.h * scale) + 4;
+  const parts: string[] = [];
+  let cursor = left;
+  const add = (from: number, to: number) => {
+    if (to - from < 0.5) return;
+    const a = ((from - left) * scale).toFixed(1);
+    const b = ((to - left) * scale + 2).toFixed(1);
+    parts.push(`M${a} -2H${b}V${height.toFixed(1)}H${a}Z`);
+  };
+  blanks.forEach(([from, to]) => {
+    add(cursor, Math.min(from, right));
+    cursor = Math.max(cursor, to);
+  });
+  add(cursor, right);
+  return `path('${parts.length > 0 ? parts.join(' ') : 'M0 0Z'}')`;
+}
+
 export const TextBlockLayer = memo(function TextBlockLayer({
   pageNumber,
   scale,
@@ -169,7 +220,7 @@ export const TextBlockLayer = memo(function TextBlockLayer({
             aria-label={block.editable ? `Edit text: ${block.text}` : `Cannot edit: ${reasonText(block.reason)}`}
             aria-disabled={!block.editable}
             title={block.editable ? 'Click to edit this text' : reasonText(block.reason)}
-            style={boxStyle(block.bbox)}
+            style={{ ...boxStyle(block.bbox), clipPath: clickableClip(block, scale) }}
             onPointerDown={(event) => event.stopPropagation()}
             onClick={(event) => {
               event.stopPropagation();
