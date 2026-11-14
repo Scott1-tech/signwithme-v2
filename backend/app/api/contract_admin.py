@@ -93,6 +93,18 @@ def delete_contract(
         ip_address=client_ip(request),
         user_agent=request.headers.get("user-agent"),
     )
+    # documents <-> document_versions point at each other (original/current
+    # version). Cut the document's two pointers first, or the cascade deletes a
+    # version the document still references and Postgres refuses (500).
+    from app.models.document import Document
+
+    db.execute(
+        update(Document)
+        .where(Document.contract_id == contract.id)
+        .values(original_version_id=None, current_version_id=None)
+        .execution_options(synchronize_session=False)
+    )
+    db.flush()
     db.delete(contract)
     db.commit()
 

@@ -249,7 +249,7 @@ function buildFlags(
       key: 'fmcsa',
       tone: 'bad',
       mark: 'fmcsa',
-      text: fmcsa === 1 ? 'FMCSA' : `FMCSA Ã—${fmcsa}`,
+      text: fmcsa === 1 ? 'FMCSA' : `FMCSA ×${fmcsa}`,
       title:
         `${fmcsa} critical FMCSA ${plural(fmcsa, 'violation', 'violations')}. ` +
         'This is the one thing a reviewer cannot wave through: an override covers ' +
@@ -561,7 +561,7 @@ export function Dashboard() {
         </p>
       )}
 
-      {loading && <p className="dash__loading">Loadingâ€¦</p>}
+      {loading && <p className="dash__loading">Loading…</p>}
 
       {!loading && hasContracts && (
         <>
@@ -595,7 +595,7 @@ export function Dashboard() {
                 className="field__input"
                 data-testid="dash-search"
                 aria-label="Search contracts by contractor, template or id"
-                placeholder="Search contractor, template or idâ€¦"
+                placeholder="Search contractor, template or id…"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
               />
@@ -635,7 +635,7 @@ export function Dashboard() {
               >
                 <option value="newest">Newest first</option>
                 <option value="oldest">Oldest first</option>
-                <option value="name">Contractor Aâ€“Z</option>
+                <option value="name">Contractor A–Z</option>
                 <option value="status">By status</option>
                 <option value="trouble">Most problems first</option>
               </select>
@@ -660,7 +660,7 @@ export function Dashboard() {
           <p>
             {needle ? (
               <>
-                Nothing matches â€œ{query.trim()}â€
+                Nothing matches “{query.trim()}”
                 {filter !== 'all' ? ` in ${GROUP_BY_KEY.get(filter as GroupKey)?.label}` : ''}
                 {troubleOnly ? ' among the contracts that need attention' : ''}.
               </>
@@ -777,9 +777,9 @@ function ContractRow({
       <td className="dash__cell dash__cell--name">
         <span className="dash__label">Contractor</span>
         <div className="dash__value">
-          <span className="dash__name">{contract.contractor_name ?? 'â€”'}</span>
+          <span className="dash__name">{contract.contractor_name ?? '—'}</span>
           <span className="dash__meta">
-            #{shortId(contract.id)} Â·{' '}
+            #{shortId(contract.id)} ·{' '}
             {/* The template's name when the server sends one; otherwise exactly
                 the text this line carried before it did. */}
             <span className="dash__template" title={`Template ${contract.template_id}`}>
@@ -808,7 +808,7 @@ function ContractRow({
         <span className="dash__label">Needs attention</span>
         <div className="dash__value">
           {flags.length === 0 ? (
-            <span className="dash__meta">â€”</span>
+            <span className="dash__meta">—</span>
           ) : (
             <ul className="dash__flags">
               {flags.map((flag) => (
@@ -886,7 +886,7 @@ function ContractRow({
               aria-label={`Delete the contract for ${who}`}
               onClick={() => void onDelete(contract)}
             >
-              {deletingId === contract.id ? 'Deletingâ€¦' : 'Delete'}
+              {deletingId === contract.id ? 'Deleting…' : 'Delete'}
             </button>
           )}
         </div>

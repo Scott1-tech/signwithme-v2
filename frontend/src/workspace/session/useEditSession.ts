@@ -21,7 +21,7 @@ import {
 } from './useDraftAutosave';
 
 /**
- * F1b (EDITOR-V2-PLAN Â§7 Â«SessiyaÂ»): the edit session of the document.
+ * F1b (EDITOR-V2-PLAN §7 «Sessiya»): the edit session of the document.
  *
  *   view --[Edit PDF]--> starting --> edit (saved | dirty | saving | offline)
  *   edit --[Save changes]--> committing --> view (a new version)
@@ -32,7 +32,7 @@ import {
  * the owner of the draft: a 409 (someone took it over, the revision moved,
  * a newer version appeared) stops everything and opens the conflict dialog --
  * the user's work is never thrown away without a choice (the local copy
- * `swm.draft.<cid>` stays, and Â«Download my changesÂ» hands it out as JSON).
+ * `swm.draft.<cid>` stays, and «Download my changes» hands it out as JSON).
  */
 
 export type SessionMode = 'view' | 'edit';
@@ -50,10 +50,10 @@ export type SessionStatus =
 export interface RecoveryOffer {
   /** `server`: a draft of mine is on the server; `local`: only this browser has edits. */
   source: 'server' | 'local';
-  /** When the edits were last touched (ms), for Â«Unsaved changes from 14:32Â». */
+  /** When the edits were last touched (ms), for «Unsaved changes from 14:32». */
   at: number;
   ops: number;
-  /** A newer local copy exists next to a server draft: Â«Restore from this browserÂ». */
+  /** A newer local copy exists next to a server draft: «Restore from this browser». */
   localNewer: boolean;
 }
 
@@ -333,7 +333,7 @@ export function useEditSession({
         adopt(draft);
         const restore = options.restore;
         if (restore && (restore.ops.length > 0 || restore.markup)) {
-          // Â«Restore from this browserÂ»: the local list replaces the server's, one step.
+          // «Restore from this browser»: the local list replaces the server's, one step.
           const before = opsRef.current;
           applyOps(restore.ops);
           history.record({ channel: 'ops', label: 'Restore edits from this browser', before, after: restore.ops });
@@ -401,7 +401,7 @@ export function useEditSession({
     return begin({ takeOver: true, restore: local });
   }, [begin, contractId]);
 
-  /** Â«DiscardÂ» on the recovery banner: the server draft (if mine) and the local copy go. */
+  /** «Discard» on the recovery banner: the server draft (if mine) and the local copy go. */
   const discardRecovered = useCallback(async () => {
     if (!contractId) return;
     const server = doc?.draft;
@@ -578,7 +578,7 @@ export function useEditSession({
     setMode('view');
     setStatus('idle');
     setConflict(null);
-    // The local copy stays: Â«Restore from this browserÂ» can bring it back.
+    // The local copy stays: «Restore from this browser» can bring it back.
     offeredFor.current = null;
     onEnded?.('conflict');
     await reloadDocument();

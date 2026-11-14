@@ -113,6 +113,52 @@ async def validation_error_handler(
     )
 
 
+INTERRUPTED_MESSAGE = (
+    "Processing was interrupted when the server restarted. Re-run it, or delete this item."
+)
+
+
+@app.on_event("startup")
+def release_interrupted_work() -> None:
+    """Inline mode only: tasks run in this process, so after a restart nothing
+    is still working on a contract left 'uploaded'/'parsing' or a template left
+    'processing'. Mark them failed (with the reason) so they can be re-run or
+    deleted instead of showing "Parsing" forever. With a separate Celery
+    worker this is not true, so nothing is touched."""
+    if not settings.run_tasks_inline:
+        return
+    from sqlalchemy import update
+
+    from app.core.database import SessionLocal
+    from app.models.contract import Contract
+    from app.models.template import Template
+
+    db = SessionLocal()
+    try:
+        contracts = db.execute(
+            update(Contract)
+            .where(Contract.status.in_(("uploaded", "parsing")))
+            .values(status="failed", error_message=INTERRUPTED_MESSAGE)
+        ).rowcount
+        templates = db.execute(
+            update(Template)
+            .where(Template.status == "processing")
+            .values(status="failed", error_message=INTERRUPTED_MESSAGE)
+        ).rowcount
+        db.commit()
+        if contracts or templates:
+            logging.getLogger(__name__).warning(
+                "Released interrupted work: %s contract(s), %s template(s) marked failed",
+                contracts,
+                templates,
+            )
+    except Exception:  # noqa: BLE001 - never block startup on this
+        db.rollback()
+        logging.getLogger(__name__).exception("Could not release interrupted work")
+    finally:
+        db.close()
+
+
 @app.get("/health", tags=["ops"])
 def health() -> dict:
     return {"status": "ok", "service": settings.app_name}

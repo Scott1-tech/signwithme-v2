@@ -4,8 +4,8 @@ import { shareApi, shareableProblem, type ShareLinkOut, type SubmissionOut } fro
 import type { EditorDocument } from '../../hooks/useContractDocument';
 
 /**
- * F3-UI (EDITOR-V2-PLAN Â§8): the workspace's view of Â«Share for others to
- * fillÂ» -- the current version's form fields (grouped by name, with why a
+ * F3-UI (EDITOR-V2-PLAN §8): the workspace's view of «Share for others to
+ * fill» -- the current version's form fields (grouped by name, with why a
  * name cannot be shared), the contract's links and the submissions.
  *
  * Nothing is asked of the server unless the document editor is there AND the
@@ -115,7 +115,7 @@ export function useShare({ contractId, editor }: Options) {
   }, [fields]);
 
   const shareableCount = groups.filter((group) => group.problem === null).length;
-  /** The top bar shows Â«ShareÂ» when there is something to share or a link to manage. */
+  /** The top bar shows «Share» when there is something to share or a link to manage. */
   const available = enabled && fields !== null && (shareableCount > 0 || links.length > 0);
 
   return {

@@ -95,16 +95,16 @@ const MAX_TEXT_CHARS = 1_500_000;
 /** Positioned text pieces kept. ~16 MB of small objects at the ceiling. */
 const MAX_TEXT_PIECES = 150_000;
 /**
- * Raw `TextContent` kept for the text layer (plan Â§3), oldest page first. A
+ * Raw `TextContent` kept for the text layer (plan §3), oldest page first. A
  * separate cache from the search's: the layer needs the items and their
  * styles as pdf.js hands them out, the search only its own joined string.
- * The layer is only ever on the â‰¤ `MAX_RENDERED_PAGES` pages of the window.
+ * The layer is only ever on the ≤ `MAX_RENDERED_PAGES` pages of the window.
  */
 const MAX_RAW_TEXT_PAGES = 10;
 /** How long the layer waits for pdf.js to have a font (bold/italic) before guessing "regular". */
 const FONT_WAIT_MS = 2000;
 
-/** One page's text layer, once it is drawn (plan Â§3). */
+/** One page's text layer, once it is drawn (plan §3). */
 export interface TextLayerHandle {
   /** One per pdf.js item, in content order, unrotated PDF points. */
   runs: TextRun[];
@@ -232,7 +232,7 @@ export interface PdfViewerState {
    */
   getPageText: (pageNumber: number) => Promise<PageText | null>;
   /**
-   * The pages that may hold pixels right now (the render window, â‰¤
+   * The pages that may hold pixels right now (the render window, ≤
    * `MAX_RENDERED_PAGES`). Replaced only when its membership changes, so its
    * identity is a signal. The text layer is mounted on these pages only.
    */
@@ -338,7 +338,7 @@ export function usePdfViewer(source: ArrayBuffer | null): PdfViewerState {
   const [viewRotations, setViewRotations] = useState<ReadonlyMap<number, Quarter>>(
     () => new Map(),
   );
-  /** The render window as React state (plan Â§3): only replaced when it changes. */
+  /** The render window as React state (plan §3): only replaced when it changes. */
   const [windowPages, setWindowPages] = useState<ReadonlySet<number>>(() => new Set());
 
   // --- imperative state -----------------------------------------------------
@@ -709,9 +709,9 @@ export function usePdfViewer(source: ArrayBuffer | null): PdfViewerState {
     [trimTextCache, docSeq],
   );
 
-  /* -- the text layer (plan Â§3) ---------------------------------------------- */
+  /* -- the text layer (plan §3) ---------------------------------------------- */
 
-  /** page -> raw `TextContent`, oldest first; â‰¤ `MAX_RAW_TEXT_PAGES`. */
+  /** page -> raw `TextContent`, oldest first; ≤ `MAX_RAW_TEXT_PAGES`. */
   const rawTextRef = useRef(new Map<number, RawText>());
   const rawJobsRef = useRef(new Map<number, Promise<RawText | null>>());
 
@@ -820,8 +820,8 @@ export function usePdfViewer(source: ArrayBuffer | null): PdfViewerState {
           container,
           viewport,
         });
-        // pdf.js sizes the container to `round(down, --scale-factor Ã— W, 1px)`;
-        // the page box is exactly `W Ã— scale`, so the layer simply fills it.
+        // pdf.js sizes the container to `round(down, --scale-factor × W, 1px)`;
+        // the page box is exactly `W × scale`, so the layer simply fills it.
         container.style.width = '100%';
         container.style.height = '100%';
         await layer.render();

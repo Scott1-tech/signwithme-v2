@@ -1,4 +1,4 @@
-"""PDF editor v2 -- the API contract (EDITOR-V2-PLAN Â§3, Â§6). FROZEN at B1-0.
+"""PDF editor v2 -- the API contract (EDITOR-V2-PLAN §3, §6). FROZEN at B1-0.
 
 Mirror: `frontend/src/api/document.ts`. A change here is a change there.
 
@@ -8,7 +8,7 @@ Conventions:
 * every request model is strict (`extra="forbid"`): an unknown key is a 422,
   never silently dropped;
 * ops are a discriminated union on `kind`. B1 accepts `text.replace` and
-  `text.delete` ONLY; every other kind of Â§3 is added by B2/B3 -- until then it
+  `text.delete` ONLY; every other kind of §3 is added by B2/B3 -- until then it
   is an unknown tag (422);
 * `layer` is never taken from the client: the server derives it from `kind`;
 * `revision` travels in the BODY (the client helper has no header parameter);
@@ -24,7 +24,7 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool, WrapValidator, fi
 
 from app.schemas.contract import ANNOTATION_MODELS, AnnotationElement
 
-# -- limits (Â§3) ----------------------------------------------------------------
+# -- limits (§3) ----------------------------------------------------------------
 
 MAX_OPS = 2000
 MAX_BODY_BYTES = 2 * 1024 * 1024  # 413 above this
@@ -431,7 +431,7 @@ ContentOp = Annotated[
     Field(discriminator="kind"),
 ]
 
-# Layer of every kind the server knows (Â§3). Never accepted from the client.
+# Layer of every kind the server knows (§3). Never accepted from the client.
 LAYER_CONTENT = "content"
 LAYER_STRUCTURE = "structure"
 LAYER_MARKUP_CONTENT = "markup-content"
@@ -455,7 +455,7 @@ OP_LAYERS: dict[str, str] = {
     "field.remove": LAYER_STRUCTURE,
     "field.value": LAYER_CONTENT,
 }
-# Markup kinds whose change re-opens review (Â§11 Q1). Legacy (v4-v6) names
+# Markup kinds whose change re-opens review (§11 Q1). Legacy (v4-v6) names
 # now; the v7 names (`textbox`, `stamp`, `image2`) join them in B2.
 MARKUP_CONTENT_KINDS = frozenset(
     {"textbox", "whiteout", "stamp", "image", "image2", "strikeout", "text", "date"}
