@@ -139,7 +139,11 @@ class RuleLocator:
         page = self._plumber.pages[page_number - 1]
         low, high = bbox.y1 - RULE_SEARCH_ABOVE, bbox.y1 + RULE_SEARCH_BELOW
         covered: dict[float, float] = {}
-        for obj in list(page.lines or []) + list(page.rects or []):
+        try:
+            objects = list(page.lines or []) + list(page.rects or [])
+        finally:
+            page.close()  # do not keep every parsed page in memory
+        for obj in objects:
             top, bottom = float(obj["top"]), float(obj["bottom"])
             if bottom - top > RULE_MAX_THICKNESS or not low <= top <= high:
                 continue

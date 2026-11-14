@@ -160,8 +160,11 @@ class PdfParser:
         with pdfplumber.open(pdf_path) as pdf:
             total = len(pdf.pages)
             for number, page in enumerate(pdf.pages, start=1):
-                if len(page.chars) < MIN_CHARS_PER_TEXT_PAGE:
-                    empty.append(number)
+                try:
+                    if len(page.chars) < MIN_CHARS_PER_TEXT_PAGE:
+                        empty.append(number)
+                finally:
+                    page.close()  # free the parsed page (memory on small instances)
         # Tolerate a few genuinely blank or image-only pages in an otherwise
         # digital document; flag the file only when most of it is unreadable.
         needs_ocr = total > 0 and len(empty) > total / 2
@@ -206,6 +209,7 @@ class PdfParser:
                             page=page_number,
                         )
                     results[extracted.field_id] = extracted.to_dict()
+                page.close()  # free the parsed page (memory on small instances)
         return results
 
     # -- template baseline ---------------------------------------------------
@@ -236,7 +240,8 @@ class PdfParser:
                 page_number = int(page_schema.get("page_number", 0))
                 if not 1 <= page_number <= len(pdf.pages):
                     continue
-                context = _PageContext(pdf.pages[page_number - 1])
+                page = pdf.pages[page_number - 1]
+                context = _PageContext(page)
                 for field in page_schema.get("fields", []):
                     if field.get("field_type") not in BASELINE_FIELD_TYPES:
                         continue
@@ -247,6 +252,7 @@ class PdfParser:
                     except Exception:  # a bad region must not block the template
                         logger.exception("Failed to baseline field %s", field.get("field_id"))
                         field[BASELINE_KEY] = {"image_hashes": [], "strokes": 0, "text_tokens": [], "prefilled": False}
+                page.close()  # free the parsed page (memory on small instances)
         return schema
 
     @staticmethod
@@ -1014,19 +1020,22 @@ def _document_fingerprint(
     signatures: dict[str, set[str]] = {}
     with pdfplumber.open(pdf_path) as pdf:
         for number, page in enumerate(pdf.pages, start=1):
-            pages.append(Counter((page.extract_text() or "").replace("_", "").split()))
-            slots = slots_by_page.get(number) or []
-            if not slots:
-                continue
-            images = [
-                (BBox.from_pdfplumber(image["x0"], image["top"], image["x1"], image["bottom"]), image)
-                for image in page.images
-            ]
-            for field in slots:
-                bbox = BBox.from_dict(field["bbox"])
-                signatures[field["field_id"]] = {
-                    _image_hash(image) for box, image in images if box.overlaps(bbox)
-                }
+            try:
+                pages.append(Counter((page.extract_text() or "").replace("_", "").split()))
+                slots = slots_by_page.get(number) or []
+                if not slots:
+                    continue
+                images = [
+                    (BBox.from_pdfplumber(image["x0"], image["top"], image["x1"], image["bottom"]), image)
+                    for image in page.images
+                ]
+                for field in slots:
+                    bbox = BBox.from_dict(field["bbox"])
+                    signatures[field["field_id"]] = {
+                        _image_hash(image) for box, image in images if box.overlaps(bbox)
+                    }
+            finally:
+                page.close()  # free the parsed page (memory on small instances)
     if page_map is not None:
         ordered = [
             pages[position - 1] if position is not None and 1 <= position <= len(pages) else Counter()

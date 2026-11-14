@@ -169,7 +169,13 @@ class FieldDetector:
         fields: list[FieldRegion] = []
         with pdfplumber.open(pdf_path) as pdf:
             for page_number, page in enumerate(pdf.pages, start=1):
-                fields.extend(self._analyze_page(page, page_number))
+                try:
+                    fields.extend(self._analyze_page(page, page_number))
+                finally:
+                    # pdfplumber keeps every parsed page in memory until the
+                    # file closes; a 30-page package then needs more than a
+                    # 512 MB instance has. Free each page once it is done.
+                    page.close()
         fields = self._pair_signatures_with_dates(fields)
         return self._sort(fields)
 
@@ -185,7 +191,11 @@ class FieldDetector:
         with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
             for page_number in wanted:
                 if 1 <= page_number <= len(pdf.pages):
-                    fields.extend(self._analyze_page(pdf.pages[page_number - 1], page_number))
+                    page = pdf.pages[page_number - 1]
+                    try:
+                        fields.extend(self._analyze_page(page, page_number))
+                    finally:
+                        page.close()
         return self._sort(fields)
 
     def build_schema(self, pdf_path: str) -> dict:
