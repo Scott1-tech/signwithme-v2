@@ -35,8 +35,14 @@ const time = (ms: number) =>
 
 const timeIso = (iso: string | null) => (iso ? time(new Date(iso).getTime()) : '');
 
+/** «Edit PDF» opens the standalone editor page on this contract (`/editor/`). */
+function openEditor(contractId: string | undefined): void {
+  if (!contractId) return;
+  window.location.assign(`/editor/index.html?contract=${encodeURIComponent(contractId)}`);
+}
+
 /** The top bar's session group. Null: nothing to show (no editor, or not allowed). */
-export function sessionControls(session: EditSession): ReactNode {
+export function sessionControls(session: EditSession, contractId: string | undefined): ReactNode {
   if (!session.available) return null;
   const caps = session.capabilities;
   // F2b (§11 Q2): a fill-only user (`can_fill`) gets Save / Cancel once filling a field started the session.
@@ -55,9 +61,9 @@ export function sessionControls(session: EditSession): ReactNode {
           type="button"
           className="sj-btn"
           data-testid="editor-edit-pdf"
-          title={reason ?? 'Edit the document’s own text (a draft; nothing changes until Save changes)'}
+          title={reason ?? 'Open the PDF editor. Saving downloads the edited file; the contract itself is not changed.'}
           disabled={Boolean(reason) || session.status === 'starting'}
-          onClick={() => void session.start()}
+          onClick={() => openEditor(contractId)}
         >
           <span aria-hidden="true">✎</span>
           <span className="sj-btn__label">{session.status === 'starting' ? 'Opening…' : 'Edit PDF'}</span>

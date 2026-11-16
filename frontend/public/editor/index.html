@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Edit PDF</title>
+  <script src="vendor/pdf.min.js"></script>
+  <script src="vendor/pdf-lib.min.js"></script>
+  <link rel="stylesheet" href="vendor/fontawesome/css/all.min.css" />
+
+  <style>
+    :root {
+      --sejda-green: #00b074;
+      --sejda-green-hover: #009662;
+      --sejda-blue: #2b88d9;
+      --workspace-bg: #e6eaee;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background-color: var(--workspace-bg);
+      color: #1e293b;
+      padding-top: 114px;
+      padding-bottom: 105px;
+      overflow-x: hidden;
+    }
+
+    /* Yuqori Boshqaruv Paneli */
+    .top-header {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      background: #ffffff;
+      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+      z-index: 2000;
+    }
+
+    .status-strip {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 6px 16px;
+      background: #f8fafc;
+      border-bottom: 1px solid #e2e8f0;
+      font-size: 12px;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .brand-box {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 700;
+      font-size: 14px;
+    }
+    .brand-box i { color: var(--sejda-green); font-size: 17px; }
+
+    .engine-pill {
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-weight: 600;
+      font-size: 11px;
+      background: #e6f8f1;
+      color: #007a50;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .action-chip {
+      background: #ffffff;
+      border: 1px solid #cbd5e1;
+      padding: 5px 11px;
+      border-radius: 5px;
+      font-size: 12px;
+      font-weight: 500;
+      color: #1e293b;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s;
+    }
+    .action-chip:hover { background: #f1f5f9; border-color: #94a3b8; }
+    .action-chip.active-chip { background: #fef3c7; border-color: #f59e0b; color: #92400e; }
+
+    /* Sejda Ko'k Ramkali Asboblar Paneli */
+    .sejda-toolbar-wrap {
+      display: flex;
+      justify-content: center;
+      padding: 7px 12px;
+      background: #fff;
+    }
+
+    .sejda-toolbar {
+      display: inline-flex;
+      flex-wrap: wrap;
+      border: 1px solid #8ec5fc;
+      border-radius: 5px;
+      background: #ffffff;
+      box-shadow: 0 2px 6px rgba(43, 136, 217, 0.1);
+      overflow: hidden;
+    }
+
+    .s-tool {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 13px;
+      border: none;
+      border-right: 1px solid #d0e5fb;
+      background: #ffffff;
+      color: #2c5282;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.12s;
+    }
+    .s-tool:last-child { border-right: none; }
+    .s-tool:hover { background: #f0f7ff; }
+    .s-tool.active { background: #d8ecff; color: #0956a6; font-weight: 600; }
+
+    /* Suzuvchi Kontekst Panellari */
+    .sejda-floating-bar {
+      position: fixed;
+      display: none;
+      align-items: center;
+      gap: 4px;
+      background: #ffffff;
+      border: 1px solid #94a3b8;
+      border-radius: 6px;
+      padding: 4px 8px;
+      box-shadow: 0 6px 22px rgba(0, 0, 0, 0.18);
+      z-index: 5000;
+    }
+    .sejda-floating-bar.visible { display: flex; }
+
+    .f-btn {
+      border: 1px solid transparent;
+      background: transparent;
+      padding: 4px 7px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12.5px;
+      color: #1e293b;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .f-btn:hover { background: #f1f5f9; }
+    .f-btn.active { background: #dbeafe; border-color: #60a5fa; color: #1d4ed8; }
+    .f-sep { width: 1px; height: 18px; background: #e2e8f0; margin: 0 3px; }
+
+    /* Sahifalar Maydoni */
+    .sejda-workspace {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+      padding: 16px;
+    }
+
+    .page-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 6px;
+    }
+
+    .page-num-badge {
+      font-size: 19px;
+      font-style: italic;
+      font-weight: 600;
+      color: #3a82c4;
+    }
+
+    .page-ctrl-group {
+      display: inline-flex;
+      border: 1px solid #b8c4ce;
+      border-radius: 4px;
+      background: #fff;
+      overflow: hidden;
+    }
+    .page-ctrl-group button {
+      border: none;
+      border-right: 1px solid #e2e8f0;
+      background: #fff;
+      padding: 5px 9px;
+      cursor: pointer;
+      color: #475569;
+    }
+    .page-ctrl-group button:last-child { border-right: none; }
+    .page-ctrl-group button:hover { background: #f0f7ff; color: var(--sejda-blue); }
+
+    .pdf-stage {
+      position: relative;
+      background: #ffffff;
+      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.12);
+      overflow: hidden;
+      user-select: none;
+    }
+
+    body.tool-text .pdf-stage { cursor: text; }
+    body.tool-whiteout .pdf-stage,
+    body.tool-shape .pdf-stage,
+    body.tool-line .pdf-stage,
+    body.tool-link .pdf-stage { cursor: crosshair; }
+
+    .vector-canvas { display: block; }
+
+    .annot-canvas {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 45;
+      mix-blend-mode: multiply;
+    }
+    .annot-canvas.active {
+      pointer-events: auto;
+      cursor: crosshair;
+    }
+
+    .dom-layer {
+      position: absolute;
+      inset: 0;
+      z-index: 10;
+      pointer-events: none;
+    }
+
+    body.inspect-raw-canvas .dom-layer {
+      opacity: 0 !important;
+      pointer-events: none !important;
+    }
+
+    /* =========================================================================
+       1. JONLI BINAR MATN ELEMENTLARI (.sejda-line)
+       Canvas'da eski matn UMUMAN YO'Q! Shu sababli bu elementni o'zgartirsangiz,
+       sursangiz yoki o'chirsangiz, tagida eski PDF yozuvi umuman qolmaydi!
+       ========================================================================= */
+    .sejda-line {
+      position: absolute;
+      pointer-events: auto;
+      cursor: text;
+      white-space: pre;
+      line-height: 0.92;
+      border: 1px solid transparent;
+      border-radius: 2px;
+      outline: none;
+      padding: 0 1px;
+      margin: 0 -1px;
+      z-index: 16;
+      color: #000000;
+      background: transparent;
+      user-select: text;
+    }
+
+    body.tool-text .sejda-line:hover {
+      border-color: #60a5fa;
+      background-color: rgba(59, 130, 246, 0.07);
+    }
+
+    .sejda-line:focus {
+      border: 1px dashed #2563eb !important;
+      background-color: rgba(255, 255, 255, 0.45);
+      box-shadow: 0 2px 8px rgba(37, 99, 235, 0.14);
+      z-index: 38;
+    }
+
+    body:not(.tool-text) .sejda-line {
+      pointer-events: none !important;
+    }
+
+    /* =========================================================================
+       2. JONLI BINAR VEKTOR CHIZIQLAR (.sejda-editable-line)
+       Canvas'dan sug'urib olingan haqiqiy vektor chiziqlar!
+       Ularni qisqartirsangiz yoki o'chirsangiz, tagida eski chiziq qolmaydi!
+       ========================================================================= */
+    .sejda-editable-line {
+      position: absolute;
+      pointer-events: auto;
+      z-index: 18;
+      display: flex;
+      align-items: flex-end;
+      cursor: text;
+      border: 1px solid transparent;
+      border-radius: 2px;
+      transition: background-color 0.1s, border-color 0.1s;
+    }
+
+    .sejda-editable-line::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 1px;
+      height: var(--line-thickness, 1.1px);
+      background-color: var(--stroke-color, #1e293b);
+      pointer-events: none;
+    }
+
+    .sejda-editable-line.line-hidden::after {
+      display: none !important;
+    }
+
+    .sejda-editable-line:hover {
+      background-color: rgba(0, 176, 116, 0.08);
+      border-color: rgba(0, 176, 116, 0.5);
+    }
+
+    .sejda-editable-line.selected,
+    .sejda-editable-line:focus-within {
+      border: 1px dashed #2563eb !important;
+      background-color: rgba(255, 255, 255, 0.45);
+      z-index: 36;
+    }
+
+    .line-text-input {
+      width: 100%;
+      min-height: 100%;
+      outline: none;
+      border: none;
+      background: transparent;
+      white-space: pre;
+      line-height: 0.94;
+      padding: 0 3px 2px 3px;
+      color: #000000;
+      cursor: text;
+      user-select: text;
+    }
+
+    /* Chiziqning chap va o'ng uchidan cho'zish/qisqartirish tutqichlari */
+    .line-handle {
+      position: absolute;
+      width: 10px;
+      height: 14px;
+      bottom: -4px;
+      background: #2563eb;
+      border: 1.5px solid #ffffff;
+      border-radius: 2px;
+      cursor: ew-resize;
+      display: none;
+      z-index: 10;
+    }
+    .line-handle.lh-left { left: -6px; }
+    .line-handle.lh-right { right: -6px; }
+
+    .sejda-editable-line:hover .line-handle,
+    .sejda-editable-line.selected .line-handle,
+    .sejda-editable-line:focus-within .line-handle {
+      display: block;
+    }
+
+    /* =========================================================================
+       3. PRO WHITEOUT VA SHAPES (.sejda-box-item)
+       ========================================================================= */
+    .sejda-box-item {
+      position: absolute;
+      pointer-events: auto;
+      z-index: 24;
+      cursor: move;
+    }
+
+    .sejda-box-item[data-type="whiteout"] {
+      background-color: #ffffff;
+      border: 1px dashed transparent;
+    }
+    .sejda-box-item[data-type="whiteout"]:hover { border-color: #93c5fd; }
+    .sejda-box-item.selected {
+      outline: 1.5px dashed #2563eb !important;
+      z-index: 30;
+    }
+
+    .rh {
+      position: absolute;
+      width: 8px;
+      height: 8px;
+      background: #ffffff;
+      border: 1.5px solid #2563eb;
+      border-radius: 1px;
+      display: none;
+      z-index: 5;
+    }
+    .sejda-box-item.selected .rh { display: block; }
+
+    .rh-nw { top: -5px; left: -5px; cursor: nwse-resize; }
+    .rh-n  { top: -5px; left: calc(50% - 4px); cursor: ns-resize; }
+    .rh-ne { top: -5px; right: -5px; cursor: nesw-resize; }
+    .rh-e  { top: calc(50% - 4px); right: -5px; cursor: ew-resize; }
+    .rh-se { bottom: -5px; right: -5px; cursor: nwse-resize; }
+    .rh-s  { bottom: -5px; left: calc(50% - 4px); cursor: ns-resize; }
+    .rh-sw { bottom: -5px; left: -5px; cursor: nesw-resize; }
+    .rh-w  { top: calc(50% - 4px); left: -5px; cursor: ew-resize; }
+
+    .rubberband-preview {
+      position: absolute;
+      border: 1.5px dashed #2563eb;
+      background: rgba(255, 255, 255, 0.85);
+      pointer-events: none;
+      z-index: 60;
+    }
+
+    /* =========================================================================
+       4. YANGI MATNLAR, CHECKBOXLAR, IMZO (.added-obj)
+       ========================================================================= */
+    .added-obj {
+      position: absolute;
+      pointer-events: auto;
+      border: 1px dashed transparent;
+      border-radius: 2px;
+      z-index: 34;
+      cursor: move;
+    }
+    .added-obj:hover { border-color: #60a5fa; }
+    .added-obj.selected, .added-obj:focus-within {
+      border-color: #2563eb;
+      z-index: 40;
+    }
+
+    .added-text-editor {
+      outline: none;
+      min-width: 14px;
+      min-height: 14px;
+      white-space: pre;
+      line-height: 0.92;
+      padding: 1px 2px;
+      cursor: text;
+      user-select: text;
+    }
+
+    .added-text-editor:empty::before {
+      content: attr(data-placeholder);
+      color: #94a3b8;
+      font-style: italic;
+      pointer-events: none;
+    }
+
+    .sejda-auto-checkbox {
+      position: absolute;
+      pointer-events: auto;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      color: #0956a6;
+      border: 1px solid transparent;
+      border-radius: 2px;
+      z-index: 32;
+      user-select: none;
+    }
+    .sejda-auto-checkbox:hover {
+      background-color: rgba(43, 136, 217, 0.14);
+      border-color: #2b88d9;
+    }
+
+    /* Apply Changes tugmasi */
+    .apply-container {
+      position: fixed;
+      bottom: 14px;
+      right: 24px;
+      background: rgba(253, 236, 209, 0.95);
+      padding: 8px 10px;
+      border-radius: 10px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.14);
+      z-index: 1500;
+    }
+
+    .btn-apply-sejda {
+      background: var(--sejda-green);
+      color: #ffffff;
+      border: none;
+      padding: 11px 22px;
+      font-size: 15px;
+      font-weight: 600;
+      border-radius: 6px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      box-shadow: 0 3px 10px rgba(0, 176, 116, 0.35);
+    }
+    .btn-apply-sejda:hover { background: var(--sejda-green-hover); }
+
+    /* Modal Oynalari */
+    .modal-bg {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.5);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 6000;
+    }
+    .modal-bg.open { display: flex; }
+    .modal-card {
+      background: #fff;
+      padding: 20px;
+      border-radius: 8px;
+      width: 440px;
+      max-width: 95vw;
+      box-shadow: 0 12px 32px rgba(0,0,0,0.25);
+    }
+    #sig-pad {
+      border: 1px dashed #94a3b8;
+      background: #f8fafc;
+      width: 100%;
+      height: 150px;
+      margin: 12px 0;
+      cursor: crosshair;
+      border-radius: 4px;
+    }
+
+    /* Binary Stream Inspector Modal */
+    .binary-modal-card {
+      background: #0f172a;
+      color: #e2e8f0;
+      padding: 18px;
+      border-radius: 8px;
+      width: 780px;
+      max-width: 95vw;
+      max-height: 85vh;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      box-shadow: 0 16px 40px rgba(0,0,0,0.4);
+    }
+    .binary-code-box {
+      background: #1e293b;
+      color: #38bdf8;
+      font-family: "Courier New", monospace;
+      font-size: 12px;
+      padding: 12px;
+      border-radius: 6px;
+      overflow-y: auto;
+      height: 420px;
+      white-space: pre-wrap;
+      border: 1px solid #334155;
+    }
+  </style>
+</head>
+<body class="tool-text">
+
+  <header class="top-header">
+    <div class="status-strip">
+      <div class="brand-box">
+        <i class="fa-solid fa-microchip"></i>
+        <span>SejdaPDFEngine v5.0 (True Binary Engine)</span>
+        <span class="engine-pill" id="tool-hint">● Binary Deconstructor Active: Asl PDF matni va chiziqlari binar oqimdan ajratib olindi!</span>
+      </div>
+
+      <div class="header-actions">
+        <a class="action-chip" id="back-link" href="/" style="text-decoration:none;color:inherit;">
+          <i class="fa-solid fa-arrow-left"></i> <span>Shartnomaga qaytish</span>
+        </a>
+        <button class="action-chip" id="btn-view-binary" title="PDF faylning haqiqiy ichki binar /Contents operatorlarini ko'rish">
+          <i class="fa-solid fa-code"></i> <span>Binary Stream Ko'rish</span>
+        </button>
+        <button class="action-chip" id="btn-inspect-canvas" title="Orqa fondagi Canvasda matn va chiziqlar yo'qligini tekshirish">
+          <i class="fa-regular fa-eye"></i> <span>Canvasni tekshirish</span>
+        </button>
+        <label class="action-chip">
+          <i class="fa-regular fa-folder-open"></i> PDF Yuklash
+          <input type="file" id="pdf-upload" accept="application/pdf" hidden />
+        </label>
+      </div>
+    </div>
+
+    <div class="sejda-toolbar-wrap">
+      <div class="sejda-toolbar" id="main-toolbar">
+        <button class="s-tool active" data-tool="text">
+          <i class="fa-solid fa-i-cursor"></i><i class="fa-solid fa-font" style="font-size:11px;margin-left:-3px;"></i> Text
+        </button>
+        <button class="s-tool" data-tool="line">
+          <i class="fa-solid fa-minus"></i> Lines (Chiziq)
+        </button>
+        <button class="s-tool" data-tool="whiteout">
+          <i class="fa-solid fa-eraser"></i> Whiteout
+        </button>
+        <button class="s-tool" data-tool="check">
+          <i class="fa-regular fa-square-check"></i> Forms (✓)
+        </button>
+        <button class="s-tool" data-tool="cross">
+          <i class="fa-solid fa-xmark"></i> Forms (✕)
+        </button>
+        <button class="s-tool" data-tool="field">
+          <i class="fa-solid fa-pen-to-square"></i> Field
+        </button>
+        <button class="s-tool" data-tool="sign">
+          <i class="fa-solid fa-file-signature"></i> Sign
+        </button>
+        <button class="s-tool" data-tool="image">
+          <i class="fa-regular fa-image"></i> Images
+        </button>
+        <button class="s-tool" data-tool="link">
+          <i class="fa-solid fa-link"></i> Links
+        </button>
+        <button class="s-tool" data-tool="annotate">
+          <i class="fa-solid fa-highlighter"></i> Annotate
+        </button>
+        <button class="s-tool" data-tool="shape">
+          <i class="fa-solid fa-shapes"></i> Shapes
+        </button>
+        <button class="s-tool" id="btn-undo">
+          <i class="fa-solid fa-delete-left"></i> Undo
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <input type="file" id="img-upload" accept="image/png,image/jpeg" hidden />
+
+  <p id="editor-status" role="status" style="margin:8px 16px 0;font:13px/1.4 system-ui,sans-serif;color:#334155;"></p>
+  <main id="sejda-mount-root"></main>
+
+  <div class="apply-container">
+    <button class="btn-apply-sejda" id="btn-apply">
+      Apply changes (Binary Save) <i class="fa-solid fa-chevron-right" style="font-size:13px;"></i>
+    </button>
+  </div>
+
+  <!-- Imzo Modal Oynasi -->
+  <div class="modal-bg" id="sig-modal">
+    <div class="modal-card">
+      <div style="display:flex; justify-content:space-between; align-items:center; font-weight:600;">
+        <span>Imzongizni chizing</span>
+        <button id="sig-close" style="border:none; background:none; cursor:pointer; font-size:16px;"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+      <canvas id="sig-pad" width="390" height="150"></canvas>
+      <div style="display:flex; justify-content:flex-end; gap:8px;">
+        <button class="action-chip" id="sig-clear">Tozalash</button>
+        <button class="btn-apply-sejda" id="sig-use" style="padding:7px 16px; font-size:13px;">Imzoni tanlash</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Binary Stream Inspector Modal -->
+  <div class="modal-bg" id="binary-modal">
+    <div class="binary-modal-card">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <span style="font-weight:700; color:#34d399;">
+          <i class="fa-solid fa-terminal"></i> PDF Binary /Contents Stream (Decompressed FlateDecode Operators)
+        </span>
+        <button id="binary-close" style="border:none; background:none; color:#fff; cursor:pointer; font-size:18px;">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+      <div style="font-size:12px; color:#94a3b8;">
+        Quyida yuklangan PDF faylning haqiqiy binar <code>/Contents</code> oqimi ko'rsatilgan. <strong>Apply changes</strong> bosilganda ushbu binar oqimning o'zi (<code>BT...ET</code> va <code>m...l S</code> operatorlari) to'g'ridan-to'g'ri qayta yoziladi:
+      </div>
+      <div class="binary-code-box" id="binary-stream-output">Yuklanmoqda...</div>
+    </div>
+  </div>
+
+  <!-- =========================================================================
+       1-MODUL: SEJDA BINARY CONTENT-STREAM SURGEON (LOW-LEVEL PDF COS ENGINE)
+       Asl PDF faylning siqilgan binar /Contents oqimini ochib, eski matn (BT..ET)
+       va eski chiziq (m..l S / re f) operatorlarini binar oqimdan kesib tashlaydi!
+       ========================================================================= -->
+  <script src="js/surgeon.js"></script>
+  <script src="js/contract-source.js"></script>
+  <script src="js/engine.js"></script>
+
+  <!-- =========================================================================
+       2-MODUL: SEJDA-PDF-ENGINE v5.0 (100% CANVAS DECONSTRUCTOR + BINARY SAVER)
+       ========================================================================= -->
+</body>
+</html>

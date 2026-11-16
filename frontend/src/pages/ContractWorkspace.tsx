@@ -6,11 +6,23 @@ import { Workspace } from '../workspace/Workspace';
 import { isWorkspacePanel, type WorkspacePanel } from '../workspace/useWorkspaceRoute';
 
 /**
+ * Editing a contract's PDF happens in the standalone editor page (`/editor/`),
+ * not in the workspace. `/edit` only forwards there, so every link to it (the
+ * dashboard's Edit, an old bookmark) lands in the editor.
+ */
+function OpenEditor({ contractId }: { contractId: string }) {
+  useEffect(() => {
+    window.location.replace(`/editor/index.html?contract=${encodeURIComponent(contractId)}`);
+  }, [contractId]);
+  return <p className="page">Opening the editor…</p>;
+}
+
+/**
  * `/contracts/:contractId/:panel` -- the one route behind `/review`, `/sign`
  * and `/edit` (plan §4). A thin shell: an unknown panel goes to `/review`,
- * everything else is the workspace. Keyed by the contract, so opening a
- * different contract starts clean, while switching panels on the same one
- * re-renders in place and never remounts.
+ * everything else is the workspace (`/edit` forwards to the editor page).
+ * Keyed by the contract, so opening a different contract starts clean, while
+ * switching panels on the same one re-renders in place and never remounts.
  */
 export function ContractWorkspace() {
   const { contractId, panel } = useParams<{ contractId: string; panel: string }>();
@@ -18,6 +30,7 @@ export function ContractWorkspace() {
   if (!isWorkspacePanel(panel)) {
     return <Navigate to={`/contracts/${contractId}/review`} replace />;
   }
+  if (panel === 'edit') return <OpenEditor contractId={contractId} />;
   return <Workspace key={contractId} />;
 }
 

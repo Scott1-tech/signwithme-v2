@@ -988,7 +988,7 @@ export function Workspace() {
     ? contract.contractor_name?.trim() || `Contract ${contract.id.slice(0, 8)}`
     : 'Loading…';
   // F1b: the top bar's session group (absent without a document editor).
-  const sessionNode = sessionControls(session);
+  const sessionNode = sessionControls(session, contractId);
   const sessionSlot = sessionNode
     ? { controls: sessionNode, finalizeBlockedReason: editing ? FINALIZE_WHILE_EDITING : null }
     : undefined;
