@@ -65,6 +65,7 @@ import { readOverride, type Signature } from '../types/contract';
 import type { BBox } from '../types/field';
 import { EditorNote } from './EditorNote';
 import { EditorTopBar } from './EditorTopBar';
+import { EmbeddedEditor } from './EmbeddedEditor';
 import { PanelSection, usePanelSections } from './PanelSections';
 import { useDocumentHistory } from './state/useDocumentHistory';
 import { useSelection } from './state/useSelection';
@@ -226,6 +227,8 @@ export function Workspace() {
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // «Edit PDF» opens the demo editor in place of the viewer (see EmbeddedEditor).
+  const [editorOpen, setEditorOpen] = useState(false);
 
   // The document's own load failure shares the workspace's one error line.
   useEffect(() => {
@@ -988,7 +991,7 @@ export function Workspace() {
     ? contract.contractor_name?.trim() || `Contract ${contract.id.slice(0, 8)}`
     : 'Loading…';
   // F1b: the top bar's session group (absent without a document editor).
-  const sessionNode = sessionControls(session, contractId);
+  const sessionNode = sessionControls(session, () => setEditorOpen(true));
   const sessionSlot = sessionNode
     ? { controls: sessionNode, finalizeBlockedReason: editing ? FINALIZE_WHILE_EDITING : null }
     : undefined;
@@ -1734,9 +1737,10 @@ export function Workspace() {
           )}
         </div>
 
+        {panel === 'sign' && !editorOpen && (
         <FloatingToolbar
           stageRef={stageRef}
-          tools={visibleTools}
+          tools={visibleTools.filter((tool) => tool.id === 'signature')}
           menuExtras={menuExtras}
           toolId={toolId}
           onTool={tools.setTool}
@@ -1779,6 +1783,17 @@ export function Workspace() {
             onDuplicate: tools.duplicateSelected,
           }}
         />
+        )}
+        {editorOpen && contractId ? (
+          <EmbeddedEditor
+            contractId={contractId}
+            onClose={() => setEditorOpen(false)}
+            onSaved={() => {
+              // The new version, its analysis and any removed signatures show after a reload.
+              window.setTimeout(() => window.location.reload(), 1200);
+            }}
+          />
+        ) : (
         <PdfViewer
           viewer={viewer}
           renderPageOverlay={renderPageOverlay}
@@ -1789,6 +1804,7 @@ export function Workspace() {
           floating={<EditorNote note={note} onDismiss={dismissNote} />}
           pageTools={pageTools}
         />
+        )}
         {forms.panel /* F2b: form field properties / tab order / detect */}
         {/* The Image tool's file dialog (W4): opened by a click on the page. */}
         <input

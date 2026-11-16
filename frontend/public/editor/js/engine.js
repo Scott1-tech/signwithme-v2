@@ -1681,6 +1681,13 @@
       const outputName = contractId ? `contract-${contractId}-edited.pdf` : 'sejda-v5-binary-edited.pdf';
       const statusLine = document.getElementById('editor-status');
       if (contractId) document.getElementById('back-link').href = `/contracts/${contractId}`;
+      document.getElementById('back-link').addEventListener('click', (event) => {
+        // Inside the contract page, «back» closes the editor there instead of leaving the page.
+        if (editorIsEmbedded()) {
+          event.preventDefault();
+          notifyContractPage('editor:close');
+        }
+      });
       let baseVersionNo = null; // the version the editor works on; a save builds on it
       try {
         if (contractId) {
@@ -1825,6 +1832,7 @@
           }
           baseVersionNo = saved.version.version_no;
           statusLine.textContent = describeSavedVersion(saved);
+          notifyContractPage('editor:saved');
         } catch (error) {
           statusLine.textContent = describeSaveFailure(error);
         } finally {

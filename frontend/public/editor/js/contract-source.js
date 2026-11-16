@@ -115,3 +115,13 @@ function describeSaveFailure(error) {
       return error.message;
   }
 }
+
+/** True when the editor runs inside the contract page (an iframe), not on its own. */
+function editorIsEmbedded() {
+  return new URLSearchParams(window.location.search).get('embedded') === '1' && window.parent !== window;
+}
+
+/** Tells the contract page what happened: `editor:close` or `editor:saved`. */
+function notifyContractPage(type) {
+  if (editorIsEmbedded()) window.parent.postMessage({ type }, window.location.origin);
+}
