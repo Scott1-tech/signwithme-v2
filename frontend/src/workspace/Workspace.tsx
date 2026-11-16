@@ -121,6 +121,9 @@ import { FORM_TOOL_IDS } from './forms/fieldTools';
 import '../styles/forms.css';
 // The signing side panel in the "Placement panel" design (styling only).
 import '../styles/placement-panel.css';
+// Simplified page: no dashed frames around empty signature/date boxes, so the
+// PDF's own content is what you see (the boxes still work when you hover).
+import '../styles/simplify.css';
 
 /** A free placement re-saves a stored library signature when the tick is on
  *  (the editor always did); a slot never did. */

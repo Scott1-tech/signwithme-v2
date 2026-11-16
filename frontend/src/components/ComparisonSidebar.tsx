@@ -30,7 +30,9 @@ const KIND_LABELS: Record<IssueKind, string> = {
   signature_slot: 'Signature / date required',
 };
 
-const KIND_ORDER: IssueKind[] = ['fmcsa', 'missing', 'inconsistency', 'warning', 'signature_slot'];
+// Simplified: the "Missing required" and "Warning" lists and the per-slot list
+// are not shown. The approval decision (and its blocking reasons) still is.
+const KIND_ORDER: IssueKind[] = ['fmcsa', 'inconsistency'];
 
 export function ComparisonSidebar({
   result,

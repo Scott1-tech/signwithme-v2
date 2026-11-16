@@ -205,9 +205,9 @@ export function SignSection({
         />
       )}
 
-      {/* The page-by-page list is only shown when signing each slot separately;
-          in "One for all" it was a long list that nobody needs to read. */}
-      {signMode === 'slot' && (
+      {/* The per-page slot list is removed (simplified). Signing still works
+          from the signature and date controls on the page. */}
+      {false && (
       <div className="card">
         <div className="card__heading">
           <h2>Signature slots</h2>

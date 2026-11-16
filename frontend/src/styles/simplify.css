@@ -1,0 +1,23 @@
+/*
+ * Simplified signing page: the automatic signature/date boxes no longer draw
+ * a frame over the PDF. They stay clickable (hover shows the box), and an
+ * empty one shows nothing until it is hovered or selected.
+ */
+.workspace .slot {
+  border: 1px solid transparent;
+  background: transparent;
+  box-shadow: none;
+}
+.workspace .slot:hover,
+.workspace .slot:focus-visible,
+.workspace .slot--active {
+  border: 1px dashed #2563eb;
+  background: rgba(37, 99, 235, 0.06);
+}
+.workspace .slot__label {
+  opacity: 0;
+}
+.workspace .slot:hover .slot__label,
+.workspace .slot--active .slot__label {
+  opacity: 1;
+}
