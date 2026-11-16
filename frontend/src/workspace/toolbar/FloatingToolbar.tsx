@@ -172,11 +172,26 @@ interface Props {
    * tools; `close` shuts the list. Never a `tool-*` testid.
    */
   menuExtras?: Partial<Record<ToolMenu, (close: () => void) => ReactNode>>;
+  /**
+   * Only these property groups, when given. The signing panel passes
+   * `['history']`: Undo / Redo, and none of the text controls a selected date
+   * or signature would bring. Pass a stable array, not a new one per render.
+   */
+  onlyGroups?: readonly PropertyGroupId[];
 }
 
 const MORE_FALLBACK_PX = 84;
 
-export function FloatingToolbar({ stageRef, tools, toolId, onTool, disabledTools, properties, menuExtras }: Props) {
+export function FloatingToolbar({
+  stageRef,
+  tools,
+  toolId,
+  onTool,
+  disabledTools,
+  properties,
+  menuExtras,
+  onlyGroups,
+}: Props) {
   const panelRef = useRef<HTMLDivElement>(null);
   const mainRef = useRef<HTMLDivElement>(null);
   const moreRef = useRef<HTMLSpanElement>(null);
@@ -187,10 +202,10 @@ export function FloatingToolbar({ stageRef, tools, toolId, onTool, disabledTools
   const itemRefs = useRef(new Map<ToolId, HTMLButtonElement>());
   const menuRefs = useRef(new Map<ToolMenu, HTMLSpanElement>());
   /** The property groups that apply right now (W4: `stroke` / `fill` come and go). */
-  const groups = useMemo(
-    () => propertyGroupsFor(properties.kind, Boolean(properties.editor)),
-    [properties.kind, properties.editor],
-  );
+  const groups = useMemo(() => {
+    const all = propertyGroupsFor(properties.kind, Boolean(properties.editor));
+    return onlyGroups ? all.filter((id) => onlyGroups.includes(id)) : all;
+  }, [properties.kind, properties.editor, onlyGroups]);
   const floating = useFloatingPanel(stageRef, panelRef);
   const { placement, dragPosition, narrow, stageSize } = floating;
 

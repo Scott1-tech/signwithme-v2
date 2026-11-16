@@ -72,6 +72,7 @@ import { useSelection } from './state/useSelection';
 import { PdfTextLayer } from './text/PdfTextLayer';
 import { useTextSelection, type TextLayerEntry } from './text/useTextSelection';
 import { FloatingToolbar } from './toolbar/FloatingToolbar';
+import type { PropertyGroupId } from './toolbar/PropertiesBar';
 import { INITIALS_LOCK_NOTE } from './tools/initials';
 import { toolsFor } from './tools/registry';
 import { assetsApi, type AssetOut, type LinkTarget, type Rect as DocRect, type TypedSignatureFont } from '../api/document';
@@ -129,6 +130,11 @@ import '../styles/simplify.css';
 /** A free placement re-saves a stored library signature when the tick is on
  *  (the editor always did); a slot never did. */
 const resavesStoredSignature = (request: ChooserRequest) => request.purpose === 'free';
+
+/** The signing panel's toolbar: the Sign tool with Undo / Redo, and none of the
+ *  text controls (font, size, style, delete) a selected date or signature would
+ *  otherwise bring back after the automatic fill. */
+const SIGN_TOOLBAR_GROUPS: readonly PropertyGroupId[] = ['history'];
 
 /** Group a list by page without losing the order inside a page. */
 function byPage<T>(items: readonly T[], pageOf: (item: T) => number | null | undefined) {
@@ -1749,6 +1755,7 @@ export function Workspace() {
         <FloatingToolbar
           stageRef={stageRef}
           tools={visibleTools.filter((tool) => tool.id === 'signature')}
+          onlyGroups={SIGN_TOOLBAR_GROUPS}
           menuExtras={menuExtras}
           toolId={toolId}
           onTool={tools.setTool}
