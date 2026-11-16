@@ -1681,6 +1681,8 @@
       const outputName = contractId ? `contract-${contractId}-edited.pdf` : 'sejda-v5-binary-edited.pdf';
       const statusLine = document.getElementById('editor-status');
       if (contractId) document.getElementById('back-link').href = `/contracts/${contractId}`;
+      // Inside the review panel there is nothing to go back to: hide the link.
+      if (editorIsEmbedded()) document.getElementById('back-link').style.display = 'none';
       document.getElementById('back-link').addEventListener('click', (event) => {
         // Inside the contract page, «back» closes the editor there instead of leaving the page.
         if (editorIsEmbedded()) {

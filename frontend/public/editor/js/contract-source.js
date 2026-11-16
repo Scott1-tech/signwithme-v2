@@ -125,3 +125,10 @@ function editorIsEmbedded() {
 function notifyContractPage(type) {
   if (editorIsEmbedded()) window.parent.postMessage({ type }, window.location.origin);
 }
+
+/* The contract page asks for a page (an issue in the review was clicked). */
+window.addEventListener('message', (event) => {
+  if (event.origin !== window.location.origin || !event.data || event.data.type !== 'editor:goto') return;
+  const bar = document.querySelectorAll('.page-bar')[Number(event.data.page) - 1];
+  if (bar) bar.scrollIntoView({ block: 'start' });
+});

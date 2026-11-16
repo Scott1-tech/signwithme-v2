@@ -35,41 +35,17 @@ const time = (ms: number) =>
 
 const timeIso = (iso: string | null) => (iso ? time(new Date(iso).getTime()) : '');
 
-/** The top bar's session group. Null: nothing to show (no editor, or not allowed). «Edit PDF» opens the editor in the contract page. */
-export function sessionControls(session: EditSession, onOpenEditor: () => void): ReactNode {
+/**
+ * The top bar's session group. Null: nothing to show. There is no «Edit PDF»
+ * button any more: the review panel shows the editor itself.
+ */
+export function sessionControls(session: EditSession): ReactNode {
   if (!session.available) return null;
   const caps = session.capabilities;
   // F2b (§11 Q2): a fill-only user (`can_fill`) gets Save / Cancel once filling a field started the session.
   const filling = session.mode === 'edit' && Boolean((caps as { can_fill?: boolean } | null)?.can_fill);
   if (caps && !caps.can_edit && caps.reason === 'not_permitted' && !filling) return null;
-  if (session.mode === 'view') {
-    const reason =
-      caps && !caps.can_edit
-        ? (CAPABILITY_REASON[caps.reason ?? ''] ?? 'Editing is not possible now')
-        : session.lock
-          ? `Being edited by ${session.lock.owner ?? 'someone else'}${session.lock.until ? ` (until ${timeIso(session.lock.until)})` : ''}`
-          : null;
-    return (
-      <>
-        <button
-          type="button"
-          className="sj-btn"
-          data-testid="editor-edit-pdf"
-          title={reason ?? 'Open the PDF editor. Saving downloads the edited file; the contract itself is not changed.'}
-          disabled={Boolean(reason) || session.status === 'starting'}
-          onClick={() => onOpenEditor()}
-        >
-          <span aria-hidden="true">✎</span>
-          <span className="sj-btn__label">{session.status === 'starting' ? 'Opening…' : 'Edit PDF'}</span>
-        </button>
-        {reason && (
-          <span className="sj-topbar__reason" data-testid="editor-edit-pdf-reason">
-            {reason}
-          </span>
-        )}
-      </>
-    );
-  }
+  if (session.mode === 'view') return null;
   const busy = session.status === 'committing' || session.status === 'starting';
   return (
     <>

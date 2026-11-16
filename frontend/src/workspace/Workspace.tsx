@@ -227,8 +227,8 @@ export function Workspace() {
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  // «Edit PDF» opens the demo editor in place of the viewer (see EmbeddedEditor).
-  const [editorOpen, setEditorOpen] = useState(false);
+  // The review panel shows the editor itself; a clicked issue moves it to its page.
+  const [editorFocus, setEditorFocus] = useState<{ page: number; nonce: number } | null>(null);
 
   // The document's own load failure shares the workspace's one error line.
   useEffect(() => {
@@ -552,7 +552,11 @@ export function Workspace() {
   const [correcting, setCorrecting] = useState(false);
 
   const goToIssue = useStableCallback((issue: PageIssue) => {
-    if (issue.page) scrollToPage(issue.page);
+    if (issue.page) {
+      // Outside the sign panel the editor shows the document: move it to that page.
+      if (panel === 'sign') scrollToPage(issue.page);
+      else setEditorFocus({ page: issue.page, nonce: Date.now() });
+    }
     selection.selectIssue(issue.key, issue.fieldId);
   });
 
@@ -991,7 +995,7 @@ export function Workspace() {
     ? contract.contractor_name?.trim() || `Contract ${contract.id.slice(0, 8)}`
     : 'Loading…';
   // F1b: the top bar's session group (absent without a document editor).
-  const sessionNode = sessionControls(session, () => setEditorOpen(true));
+  const sessionNode = sessionControls(session);
   const sessionSlot = sessionNode
     ? { controls: sessionNode, finalizeBlockedReason: editing ? FINALIZE_WHILE_EDITING : null }
     : undefined;
@@ -1737,7 +1741,7 @@ export function Workspace() {
           )}
         </div>
 
-        {panel === 'sign' && !editorOpen && (
+        {panel === 'sign' && (
         <FloatingToolbar
           stageRef={stageRef}
           tools={visibleTools.filter((tool) => tool.id === 'signature')}
@@ -1784,10 +1788,10 @@ export function Workspace() {
           }}
         />
         )}
-        {editorOpen && contractId ? (
+        {panel !== 'sign' && contractId ? (
           <EmbeddedEditor
             contractId={contractId}
-            onClose={() => setEditorOpen(false)}
+            focus={editorFocus}
             onSaved={() => {
               // The new version, its analysis and any removed signatures show after a reload.
               window.setTimeout(() => window.location.reload(), 1200);
