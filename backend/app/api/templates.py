@@ -4,7 +4,7 @@ from __future__ import annotations
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response
 from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -135,8 +135,8 @@ def get_template_file(
     template = get_template_or_404(db, template_id)
     if not template.file_path:
         raise NotFoundError("Template file is not available")
-    return StreamingResponse(
-        storage.stream(template.file_path),
+    return Response(
+        content=storage.get_bytes(template.file_path),
         media_type="application/pdf",
         headers={"Cache-Control": "no-store"},
     )

@@ -3,3 +3,14 @@
   X-Content-Type-Options: nosniff
   Referrer-Policy: same-origin
   Content-Security-Policy: default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; connect-src 'self' blob:; object-src 'none'; frame-ancestors 'self'; base-uri 'self'
+
+# Built files carry a content hash in their name: a browser keeps them for good
+# and a new build is a new name.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# The editor's libraries and fonts change only with a release.
+/editor/vendor/*
+  Cache-Control: public, max-age=604800
+/fonts/*
+  Cache-Control: public, max-age=604800

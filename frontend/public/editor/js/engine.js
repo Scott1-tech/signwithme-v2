@@ -64,9 +64,32 @@
           </button>
           <div class="f-sep"></div>
           <button class="f-btn" data-cmd="delete" style="color:#dc2626;" title="Butunlay o'chirish"><i class="fa-regular fa-trash-can"></i></button>
+          <div class="f-sep"></div>
+          <button class="f-btn" data-cmd="close" title="Panelni yopish (Esc)"><i class="fa-solid fa-xmark"></i></button>
         `;
         document.body.appendChild(bar);
         this.textBar = bar;
+
+        // The bar goes away when the work is done: its ✕, Esc, or a click / Tab
+        // that leaves the text (but not a click on the bar's own controls).
+        const closeBar = () => {
+          if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
+          this.deselectAll();
+        };
+        bar.querySelector('[data-cmd="close"]').onclick = closeBar;
+        document.addEventListener('keydown', (e) => {
+          if (e.key === 'Escape' && bar.classList.contains('visible')) closeBar();
+        });
+        document.addEventListener('focusout', (e) => {
+          if (!e.target.closest || !e.target.closest('.dom-layer')) return;
+          setTimeout(() => {
+            const active = document.activeElement;
+            if (this.barDragging) return;
+            if (active && (bar.contains(active) || (active.closest && active.closest('.dom-layer')))) return;
+            if (document.querySelector('.sejda-editable-line.selected, .added-obj.selected')) return;
+            bar.classList.remove('visible');
+          }, 0);
+        });
 
         bar.querySelector('[data-cmd="bold"]').onclick = () => this._toggleFormat('bold');
         bar.querySelector('[data-cmd="italic"]').onclick = () => this._toggleFormat('italic');
@@ -110,6 +133,11 @@
           const sx = e.clientX, sy = e.clientY;
           const sl = parseFloat(target.style.left) || 0;
           const st = parseFloat(target.style.top) || 0;
+          // While dragging, the bar travels with the pointer (the handle stays
+          // under it) instead of jumping onto the text that is being moved.
+          const barLeft = parseFloat(bar.style.left) || 0;
+          const barTop = parseFloat(bar.style.top) || 0;
+          this.barDragging = true;
 
           const onMove = (ev) => {
             const nl = sl + (ev.clientX - sx);
@@ -121,11 +149,14 @@
               target.dataset.dy = ((nt - parseFloat(target.dataset.initTop)) / sc).toFixed(2);
               this._recordModification(target);
             }
-            this._positionBar(this.textBar, target);
+            bar.style.left = `${barLeft + (ev.clientX - sx)}px`;
+            bar.style.top = `${barTop + (ev.clientY - sy)}px`;
           };
           const onUp = () => {
             window.removeEventListener('mousemove', onMove);
             window.removeEventListener('mouseup', onUp);
+            this.barDragging = false;
+            this._positionBar(this.textBar, target);
           };
           window.addEventListener('mousemove', onMove);
           window.addEventListener('mouseup', onUp);
@@ -257,7 +288,9 @@
        *    Canvas'ga chizmasdan, ularni jonli .sejda-editable-line obyektlariga aylantiradi!
        * 3. Barcha kichik kvadrat Checkboxlarni (☐) ushlab qolib, jonli Checkboxga aylantiradi!
        */
-      async _renderDeconstructedBinaryCanvas(pdfPage, canvas, viewport, scale) {
+      async _renderDeconstructedBinaryCanvas(pdfPage, canvas, viewport, scale, passThrough = false) {
+        // passThrough: the page is drawn exactly as the PDF has it (text and
+        // rules included); the hooks below only record where things are.
         const ctx = canvas.getContext('2d');
         const interceptedLines = [];
         const interceptedBoxes = [];
@@ -301,10 +334,12 @@
             y: m.f,
             color: ctx.fillStyle
           });
-          // origFillText chaqirilmaydi! Canvas 100% matndan toza bo'ladi!
+          if (passThrough) return origFillText.apply(this, arguments);
         };
 
-        ctx.strokeText = function() {};
+        ctx.strokeText = function() {
+          if (passThrough) return origStrokeText.apply(this, arguments);
+        };
 
         // 2. Vektor chiziqlar va Checkbox kvadratlarni ushlab qolamiz!
         ctx.beginPath = function() {
@@ -344,7 +379,7 @@
               w: sw,
               color: typeof ctx.fillStyle === 'string' ? ctx.fillStyle : '#1e293b'
             });
-            return; // Canvas'ga chizmaymiz!
+            if (!passThrough) return; // Canvas'ga chizmaymiz!
           }
           return origFillRect.apply(this, arguments);
         };
@@ -381,6 +416,7 @@
                 w,
                 color: typeof ctx.strokeStyle === 'string' ? ctx.strokeStyle : '#1e293b'
               });
+              if (passThrough) return origStroke.apply(this, arguments);
               origBeginPath.call(this);
               resetPathBounds();
               return; // Canvas'ga chizmaymiz!
@@ -405,6 +441,7 @@
                 w,
                 color: typeof ctx.fillStyle === 'string' ? ctx.fillStyle : '#1e293b'
               });
+              if (passThrough) return origFill.apply(this, arguments);
               origBeginPath.call(this);
               resetPathBounds();
               return; // Canvas'ga chizmaymiz!
@@ -470,13 +507,19 @@
         const domLayer = document.createElement('div');
         domLayer.className = 'dom-layer';
 
-        stage.append(vectorCanvas, annotCanvas, domLayer);
+        // Pieces of the page WITHOUT its text, shown under a line that is being changed.
+        const patchLayer = document.createElement('div');
+        patchLayer.className = 'patch-layer';
+
+        stage.append(vectorCanvas, patchLayer, annotCanvas, domLayer);
         this.root.append(bar, stage);
 
         state.stage = stage;
         state.vectorCanvas = vectorCanvas;
         state.annotCanvas = annotCanvas;
         state.domLayer = domLayer;
+        state.patchLayer = patchLayer;
+        this._watchReveal(state);
 
         await this._renderStage(state, true);
         this._attachStageEvents(state, bar);
@@ -496,8 +539,14 @@
             state.pdfPage,
             state.vectorCanvas,
             viewport,
-            state.scale
+            state.scale,
+            true
           );
+        // The text-free copy belongs to the old size; it is drawn again when needed.
+        state.cleanCanvas = null;
+        state.cleanPending = null;
+        state.patchSig = null;
+        state.renderSeq = (state.renderSeq || 0) + 1;
 
         if (rebuildDom) {
           state.annotCanvas.width = viewport.width;
@@ -540,6 +589,142 @@
         }
         // The signatures and dates placed in the app, at this page's new size.
         if (window.SignOverlays) window.SignOverlays.draw(state);
+        this._syncReveal(state);
+      }
+
+      /*
+       * THE PAGE STAYS AS THE PDF HAS IT. The canvas shows the original page;
+       * every line of text has an invisible, clickable twin over it. Only a
+       * line that is being edited (or was changed, moved, restyled or erased)
+       * is "revealed": a piece of the page drawn without its text covers the
+       * original there, and the editable twin becomes visible on top of it.
+       * Everything else is the untouched original picture.
+       */
+      _watchReveal(state) {
+        let queued = false;
+        const schedule = () => {
+          if (queued) return;
+          queued = true;
+          requestAnimationFrame(() => {
+            queued = false;
+            this._syncReveal(state);
+          });
+        };
+        new MutationObserver(schedule).observe(state.domLayer, {
+          subtree: true,
+          childList: true,
+          characterData: true,
+          attributes: true,
+          attributeFilter: ['style', 'class'],
+        });
+        state.domLayer.addEventListener('focusin', schedule);
+        state.domLayer.addEventListener('focusout', schedule);
+        // The text-free copy is prepared as soon as the pointer is over the page.
+        state.stage.addEventListener('mouseenter', () => this._ensureCleanCanvas(state), { passive: true });
+      }
+
+      _styleSignature(el) {
+        return [el.style.fontSize, el.style.fontFamily, el.style.fontWeight, el.style.fontStyle, el.style.color].join('|');
+      }
+
+      // Is this registered piece different from the original page (or being edited)?
+      _isTouched(entry) {
+        const el = entry.el;
+        if (!el.isConnected) return true;
+        if (entry.kind === 'checkbox' || entry.kind === 'added') return false;
+        if (entry.kind === 'line') {
+          if (document.activeElement === el) return true;
+          if (el.textContent !== entry.origText) return true;
+          if (Math.abs(parseFloat(el.dataset.dx) || 0) > 0.001 || Math.abs(parseFloat(el.dataset.dy) || 0) > 0.001) return true;
+          if (Math.abs((parseFloat(el.style.left) || 0) - entry.px.x) > 0.5) return true;
+          if (Math.abs((parseFloat(el.style.top) || 0) - entry.px.top) > 0.5) return true;
+          if (entry.styleSig === undefined) entry.styleSig = this._styleSignature(el);
+          return this._styleSignature(el) !== entry.styleSig;
+        }
+        return el.classList.contains('line-hidden') || this._geometryChanged(entry);
+      }
+
+      // The part of the original picture this piece occupies, in canvas pixels.
+      _patchRect(entry, scale) {
+        const { x, top, w, h } = entry.px;
+        if (entry.kind === 'line') return { x: x - 2, y: top - h * 0.12, w: w + 4, h: h * 1.3 };
+        if (entry.kind === 'vector') return { x: x - 1, y: top + h - 2 - 3 * scale, w: w + 2, h: 6 * scale };
+        return { x: x - 1, y: top, w: w + 2, h: h * 1.35 };
+      }
+
+      // The page drawn without its text and rules, made once per size, only when a line is touched.
+      _ensureCleanCanvas(state) {
+        if (state.cleanCanvas || state.cleanPending || !state.viewport) return state.cleanPending || null;
+        const seq = state.renderSeq;
+        const canvas = document.createElement('canvas');
+        canvas.width = state.vectorCanvas.width;
+        canvas.height = state.vectorCanvas.height;
+        state.cleanPending = this._renderDeconstructedBinaryCanvas(state.pdfPage, canvas, state.viewport, state.scale)
+          .then(() => {
+            if (state.renderSeq !== seq) return;
+            state.cleanCanvas = canvas;
+            state.cleanPending = null;
+            this._syncReveal(state);
+          })
+          .catch(() => {
+            if (state.renderSeq === seq) state.cleanPending = null;
+          });
+        return state.cleanPending;
+      }
+
+      _syncReveal(state) {
+        if (!state.patchLayer || !this.registry) return;
+        const touched = [];
+        const pristine = [];
+        for (const entry of this.registry.values()) {
+          if (entry.state !== state) continue;
+          if (entry.kind === 'checkbox') continue;
+          if (entry.kind === 'added') {
+            entry.el.classList.add('revealed');
+          } else if (this._isTouched(entry)) {
+            touched.push(entry);
+          } else {
+            pristine.push(entry);
+          }
+        }
+        pristine.forEach((entry) => entry.el.classList.remove('revealed'));
+        if (touched.length === 0) {
+          if (state.patchSig !== '') {
+            state.patchLayer.innerHTML = '';
+            state.patchSig = '';
+          }
+          return;
+        }
+        if (!state.cleanCanvas) {
+          // Not shown yet: the original stays in place until its text-free copy is ready.
+          this._ensureCleanCanvas(state);
+          return;
+        }
+        const rects = touched.map((entry) => {
+          const rect = this._patchRect(entry, state.scale);
+          const x = Math.max(0, Math.floor(rect.x));
+          const y = Math.max(0, Math.floor(rect.y));
+          const right = Math.min(state.cleanCanvas.width, Math.ceil(rect.x + rect.w));
+          const bottom = Math.min(state.cleanCanvas.height, Math.ceil(rect.y + rect.h));
+          return { x, y, w: right - x, h: bottom - y };
+        }).filter((rect) => rect.w > 0 && rect.h > 0);
+        const signature = rects.map((rect) => `${rect.x},${rect.y},${rect.w},${rect.h}`).join(';');
+        if (signature !== state.patchSig) {
+          state.patchSig = signature;
+          state.patchLayer.innerHTML = '';
+          for (const rect of rects) {
+            const patch = document.createElement('canvas');
+            patch.width = rect.w;
+            patch.height = rect.h;
+            patch.style.left = `${rect.x}px`;
+            patch.style.top = `${rect.y}px`;
+            patch.getContext('2d').drawImage(state.cleanCanvas, rect.x, rect.y, rect.w, rect.h, 0, 0, rect.w, rect.h);
+            state.patchLayer.appendChild(patch);
+          }
+        }
+        touched.forEach((entry) => {
+          if (entry.el.isConnected) entry.el.classList.add('revealed');
+        });
       }
 
       async _extractAndBuildLiveDomNodes(state, capturedGlyphColors) {
@@ -547,7 +732,6 @@
         const styles = textContent.styles || {};
         const viewport = state.viewport;
         const scale = state.scale;
-        const vCtx = state.vectorCanvas.getContext('2d');
 
         const rawSegments = [];
         const underscoreSegments = [];
@@ -615,11 +799,6 @@
             } else if (/^(\[\s*\]|[\u2610\u2611\u2612\u25A1\u25A0☐☑☒])$/.test(tokenStr.trim())) {
               const boxSize = Math.min(fontH * 0.82, 14 * scale);
               const boxY = baselineY - boxSize;
-              vCtx.save();
-              vCtx.strokeStyle = '#1e293b';
-              vCtx.lineWidth = 1.1;
-              vCtx.strokeRect(cursorX + 1, boxY, boxSize, boxSize);
-              vCtx.restore();
 
               this._createAutoCheckbox(state, cursorX, boxY - 1, boxSize + 2, boxSize + 2);
             } else if (!/^\s+$/.test(tokenStr)) {
@@ -870,7 +1049,6 @@
         box.style.width = `${w}px`;
         box.style.height = `${h}px`;
         box.style.fontSize = `${h * 0.9}px`;
-        box.style.border = '1.2px solid #1e293b';
         box.title = 'Belgilash uchun bosing (✓)';
 
         box.addEventListener('mousedown', (e) => {
@@ -907,6 +1085,7 @@
           state,
           pt: this._pageRect(state, x, topY, width, height),
           px: { x, top: topY, w: width, h: height },
+          styleSig: kind === 'line' ? this._styleSignature(el) : undefined,
         });
       }
 
@@ -1039,9 +1218,15 @@
           } else if (kind === 'line') {
             const moved = Math.abs(parseFloat(el.dataset.dx) || 0) > 0.001
               || Math.abs(parseFloat(el.dataset.dy) || 0) > 0.001;
-            if (moved) unsupported.push(`${place(state)}: siljitilgan matn hozircha saqlanmaydi.`);
             if (erased) edits.push(change(entry, '', false));
-            else if (text !== entry.origText) edits.push(change(entry, text, false));
+            else if (moved) {
+              // A moved line is written at its new place (points; down and right are positive).
+              edits.push({
+                ...change(entry, text, false),
+                dxPt: parseFloat(el.dataset.dx) || 0,
+                dyPt: parseFloat(el.dataset.dy) || 0,
+              });
+            } else if (text !== entry.origText) edits.push(change(entry, text, false));
           } else if (kind === 'added') {
             // A line the person added reaches the file only as text in a blank.
             if (!erased && text.trim()) edits.push(change(entry, text.trim(), true));
@@ -1089,8 +1274,15 @@
       _positionBar(barEl, targetNode) {
         const r = targetNode.getBoundingClientRect();
         barEl.classList.add('visible');
-        barEl.style.top = `${Math.max(116, r.top - 44)}px`;
-        barEl.style.left = `${Math.max(12, Math.min(window.innerWidth - 520, r.left))}px`;
+        // Above the text with a clear gap; under it when there is no room
+        // above (below the header). The bar never lies on the text itself.
+        const header = document.querySelector('.top-header');
+        const floor = (header ? header.getBoundingClientRect().bottom : 0) + 6;
+        const barH = barEl.offsetHeight || 36;
+        const barW = barEl.offsetWidth || 520;
+        const above = r.top - barH - 14;
+        barEl.style.top = `${above >= floor ? above : Math.min(window.innerHeight - barH - 6, r.bottom + 14)}px`;
+        barEl.style.left = `${Math.max(12, Math.min(window.innerWidth - barW - 12, r.left))}px`;
 
         if (barEl === this.textBar && this.focusedNode) {
           barEl.querySelector('[data-cmd="bold"]').classList.toggle('active', this.focusedNode.dataset.bold === 'true');
@@ -1971,7 +2163,10 @@
       const statusLine = document.getElementById('editor-status');
       if (contractId) document.getElementById('back-link').href = `/contracts/${contractId}`;
       // Inside the review panel there is nothing to go back to: hide the link.
-      if (editorIsEmbedded()) document.getElementById('back-link').style.display = 'none';
+      if (editorIsEmbedded()) {
+        document.getElementById('back-link').style.display = 'none';
+        document.body.classList.add('embedded');
+      }
       document.getElementById('back-link').addEventListener('click', (event) => {
         // Inside the contract page, «back» closes the editor there instead of leaving the page.
         if (editorIsEmbedded()) {
@@ -1998,8 +2193,34 @@
       // Ask the contract page for its signatures and dates, now that the pages exist.
       if (window.SignOverlays) window.SignOverlays.ready();
 
+      // On a contract only text edits are written into the file so far. A tool
+      // whose work the save would refuse is switched off here, instead of
+      // letting the person do the work and lose it at «Saqlash».
+      const NOT_SAVED = 'Hozircha shartnomaga saqlanmaydi';
+      if (contractId) {
+        document.querySelectorAll('#main-toolbar .s-tool[data-tool]').forEach((btn) => {
+          if (btn.dataset.tool === 'text') return;
+          btn.classList.add('not-saved');
+          btn.setAttribute('aria-disabled', 'true');
+          btn.title = NOT_SAVED;
+        });
+        const lockPageTools = () => {
+          document.querySelectorAll('.page-bar [data-act="del"], .page-bar [data-act="rccw"], .page-bar [data-act="rcw"], .page-bar [data-act="ins"]').forEach((btn) => {
+            btn.classList.add('not-saved');
+            btn.disabled = true;
+            btn.title = NOT_SAVED;
+          });
+        };
+        lockPageTools();
+        new MutationObserver(lockPageTools).observe(document.querySelector('#sejda-mount-root') || document.body, { childList: true });
+      }
+
       document.querySelectorAll('#main-toolbar .s-tool[data-tool]').forEach(btn => {
         btn.onclick = () => {
+          if (btn.classList.contains('not-saved')) {
+            statusLine.textContent = `«${btn.textContent.trim()}»: ${NOT_SAVED.toLowerCase()}.`;
+            return;
+          }
           document.querySelectorAll('#main-toolbar .s-tool').forEach(b => b.classList.remove('active'));
           btn.classList.add('active');
           const tool = btn.dataset.tool;

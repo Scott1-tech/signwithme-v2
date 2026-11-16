@@ -21,3 +21,19 @@
 .workspace .slot--active .slot__label {
   opacity: 1;
 }
+
+/*
+ * Fewer words on the signing page (display only, the elements stay): the
+ * controls already say what they do, so the standing instructions under them
+ * are not shown. What is still MISSING stays visible -- the count next to
+ * «Generate final contract», the "x of y still empty" line and every error.
+ */
+.workspace [data-testid='dates-needed'],
+.workspace [data-testid='finalize-date-needed'],
+.workspace [data-testid='finalize-ready'],
+.workspace .bulk-signature > .hint,
+.workspace .pp-sub,
+.workspace .date-picker__preview,
+.modal__hint {
+  display: none;
+}

@@ -217,6 +217,9 @@ class SignatureOut(BaseModel):
     bbox: BBoxModel
     field_id: str | None
     signed_at: datetime
+    # sha256 of the stored image. One signature applied to every slot is many
+    # rows with one image: the client downloads each distinct image once.
+    signature_hash: str | None = None
 
 
 # One "apply to all" click may cover every signature slot in a package. The cap
@@ -263,6 +266,8 @@ class BulkSignaturePlaced(BaseModel):
     signature_id: UUID
     page_number: int
     bbox: BBoxModel
+    # The one image every placed row shares (see `SignatureOut.signature_hash`).
+    signature_hash: str | None = None
 
 
 class BulkSignatureSkipped(BaseModel):

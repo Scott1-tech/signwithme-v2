@@ -24,13 +24,22 @@ def inspect_pages(pdf_bytes: bytes) -> tuple[list[PageInfo], list[dict]]:
         return [doc.page_info(i) for i in range(doc.page_count)], list(doc.warnings)
 
 
-def page_text_model(pdf_bytes: bytes, index: int, sha256: str | None = None) -> PageText:
+def _bytes_of(pdf_bytes) -> bytes:
+    """`pdf_bytes` may be a zero-argument loader: the file is then fetched only
+    on a cache miss (a download from the object store per call otherwise)."""
+    return pdf_bytes() if callable(pdf_bytes) else pdf_bytes
+
+
+def page_text_model(pdf_bytes, index: int, sha256: str | None = None) -> PageText:
+    if sha256 is None:
+        pdf_bytes = _bytes_of(pdf_bytes)
     key = (sha256 or adapter.sha256_hex(pdf_bytes), index)
     with _LOCK:
         cached = _TEXT_CACHE.get(key)
         if cached is not None:
             _TEXT_CACHE.move_to_end(key)
             return cached
+    pdf_bytes = _bytes_of(pdf_bytes)
     with adapter.Doc(pdf_bytes) as doc:
         if not 0 <= index < doc.page_count:
             raise IndexError(index)
@@ -45,12 +54,13 @@ def page_text_model(pdf_bytes: bytes, index: int, sha256: str | None = None) -> 
 _OPEN_WARNINGS: "OrderedDict[str, list[dict]]" = OrderedDict()
 
 
-def open_warnings(pdf_bytes: bytes, sha256: str) -> list[dict]:
-    """Warnings from merely opening the file (`pdf_repaired`), cached by hash."""
+def open_warnings(pdf_bytes, sha256: str) -> list[dict]:
+    """Warnings from merely opening the file (`pdf_repaired`), cached by hash.
+    `pdf_bytes` may be a loader (see `_bytes_of`)."""
     with _LOCK:
         if sha256 in _OPEN_WARNINGS:
             return list(_OPEN_WARNINGS[sha256])
-    with adapter.Doc(pdf_bytes) as doc:
+    with adapter.Doc(_bytes_of(pdf_bytes)) as doc:
         warnings = list(doc.warnings)
     with _LOCK:
         _OPEN_WARNINGS[sha256] = warnings

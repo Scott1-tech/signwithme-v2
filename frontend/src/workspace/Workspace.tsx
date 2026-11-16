@@ -338,7 +338,11 @@ export function Workspace() {
   const { slots, sigSlots, dateSlots, slotById, sigSlotIds } = slotSet;
 
   const signatureIds = useMemo(() => signatures.map((signature) => signature.id), [signatures]);
-  const signatureImages = useSignatureImages(contractId, signatureIds);
+  const signatureHashes = useMemo(
+    () => new Map(signatures.map((signature) => [signature.id, signature.signature_hash])),
+    [signatures],
+  );
+  const signatureImages = useSignatureImages(contractId, signatureIds, (id) => signatureHashes.get(id) ?? undefined);
 
   const signing = useSigningState(signatures, slotSet, dateValues);
   const {
@@ -1792,8 +1796,12 @@ export function Workspace() {
             overlays={editorOverlays}
             signHistory={signHistory}
             onSaved={() => {
-              // The new version, its analysis and any removed signatures show after a reload.
-              window.setTimeout(() => window.location.reload(), 1200);
+              // The new version, its analysis and any removed signatures are
+              // read again in place: no page reload, and the file the editor
+              // just downloaded is reused (`lib/documentCache`).
+              void refresh();
+              void contractDocument.reload();
+              signaturesApi.list(contractId).then(setSignatures).catch(() => undefined);
             }}
           />
         ) : (

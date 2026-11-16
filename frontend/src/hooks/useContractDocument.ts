@@ -6,6 +6,7 @@ import {
   type DocumentOut,
   type PageOut,
 } from '../api/document';
+import { documentCache } from '../lib/documentCache';
 
 /**
  * The contract's document: the PDF the viewer shows, and -- F1b -- the
@@ -70,10 +71,13 @@ export function useContractDocument(contractId: string | undefined): ContractDoc
   liveFor.current = contractId;
 
   const bytesFor = useCallback(
-    (id: string, versionNo: number | null) =>
-      versionNo === null || versionNo === 1
-        ? fetchPdf(`/api/contracts/${id}/file`)
-        : documentApi.versionFile(id, versionNo),
+    (id: string, versionNo: number | null) => {
+      if (versionNo === null) return fetchPdf(`/api/contracts/${id}/file`);
+      // Shared with the editor inside the page: one download for both.
+      return documentCache.get(id, versionNo, () =>
+        versionNo === 1 ? fetchPdf(`/api/contracts/${id}/file`) : documentApi.versionFile(id, versionNo),
+      );
+    },
     [],
   );
 
@@ -84,7 +88,10 @@ export function useContractDocument(contractId: string | undefined): ContractDoc
       let reason: string | null = null;
       try {
         doc = await documentApi.get(id);
-        pages = await documentApi.pages(id, doc.current_version.version_no);
+        // The bytes do not wait for the page list: both are asked for at once.
+        const versionNo = doc.current_version.version_no;
+        if (initial || versionNo !== versionRef.current) void bytesFor(id, versionNo).catch(() => undefined);
+        pages = await documentApi.pages(id, versionNo);
       } catch (cause) {
         doc = null;
         pages = [];

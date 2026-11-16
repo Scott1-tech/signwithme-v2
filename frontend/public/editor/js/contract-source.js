@@ -66,8 +66,20 @@ async function editorJson(path, method, body) {
 async function loadContractVersion(contractId) {
   const state = await (await editorRequest(`/api/contracts/${contractId}/document`)).json();
   const versionNo = state.current_version.version_no;
-  const file = await editorRequest(`/api/contracts/${contractId}/document/versions/${versionNo}/file`);
-  return { versionNo, bytes: await file.arrayBuffer() };
+  const download = async () => {
+    const file = await editorRequest(`/api/contracts/${contractId}/document/versions/${versionNo}/file`);
+    return file.arrayBuffer();
+  };
+  // Inside the contract page the file is downloaded once for both (src/lib/documentCache.ts).
+  let shared = null;
+  try {
+    shared = editorIsEmbedded() ? window.parent.__swmDocumentCache : null;
+  } catch (error) {
+    shared = null;
+  }
+  if (!shared) return { versionNo, bytes: await download() };
+  // A copy: pdf.js hands the buffer it is given to its worker.
+  return { versionNo, bytes: new Uint8Array(await shared.get(contractId, versionNo, download)).slice().buffer };
 }
 
 /** A request id for one save: 8 to 64 letters, digits, `-` or `_`, as the server requires. */

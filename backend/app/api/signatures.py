@@ -436,6 +436,7 @@ def place_signatures_bulk(
                 signature_id=signature.id,
                 page_number=page,
                 bbox=bbox,
+                signature_hash=image_hash,
             )
         )
 

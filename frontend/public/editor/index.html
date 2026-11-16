@@ -225,6 +225,18 @@
       cursor: crosshair;
     }
 
+    /* Text-free pieces of the page under the lines that were changed (engine.js `_syncReveal`). */
+    .patch-layer {
+      position: absolute;
+      inset: 0;
+      z-index: 5;
+      pointer-events: none;
+    }
+    .patch-layer canvas {
+      position: absolute;
+      display: block;
+    }
+
     .dom-layer {
       position: absolute;
       inset: 0;
@@ -284,10 +296,32 @@
       outline: none;
       padding: 0 1px;
       margin: 0 -1px;
-      z-index: 16;
+      z-index: 20;
       color: #000000;
       background: transparent;
       user-select: text;
+    }
+
+    /* Inside the contract page the page's own bar already names the contract:
+       the editor shows only its tools and the save button. */
+    body.embedded .brand-box { display: none; }
+    body.embedded .status-strip { justify-content: flex-end; }
+    /* A tool whose result cannot be written into the contract yet. */
+    .s-tool.not-saved,
+    .page-ctrl-group button.not-saved,
+    .action-chip.not-saved {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    /* An untouched line is the PDF's own picture: its editable twin stays
+       invisible (still clickable) until it is edited. Same for a rule. */
+    .sejda-line:not(.revealed) {
+      color: transparent !important;
+      caret-color: #000000;
+    }
+    .sejda-editable-line:not(.revealed)::after {
+      display: none !important;
     }
 
     body.tool-text .sejda-line:hover {
@@ -596,8 +630,7 @@
     <div class="status-strip">
       <div class="brand-box">
         <i class="fa-solid fa-microchip"></i>
-        <span>SejdaPDFEngine v5.0 (True Binary Engine)</span>
-        <span class="engine-pill" id="tool-hint">● Binary Deconstructor Active: Asl PDF matni va chiziqlari binar oqimdan ajratib olindi!</span>
+        <span>PDF muharriri</span>
       </div>
 
       <div class="header-actions">

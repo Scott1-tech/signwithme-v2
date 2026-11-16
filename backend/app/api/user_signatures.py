@@ -15,7 +15,7 @@ from __future__ import annotations
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
@@ -138,9 +138,8 @@ def get_signature_image(
 ):
     """Serve the stored PNG bytes, ownership-checked, through the API only."""
     signature = _get_owned_signature(db, signature_id, user)
-    stream = storage.stream(signature.image_path)
-    return StreamingResponse(
-        stream,
+    return Response(
+        content=storage.get_bytes(signature.image_path),
         media_type="image/png",
         headers={
             "X-Content-SHA256": signature.signature_hash or "",

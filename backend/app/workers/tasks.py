@@ -36,28 +36,41 @@ def analyze_template_task(self, template_id: str) -> dict:
             return {"status": "missing"}
 
         template.status = "processing"
+        file_path = template.file_path
         db.commit()
+        # The analysis of a long form takes minutes on a small host. The
+        # database connection is given back for that time: an idle one is
+        # dropped by a hosted Postgres, and the result then could not be saved.
+        db.close()
 
-        with storage.local_copy(template.file_path) as path:
+        schema = None
+        with storage.local_copy(file_path) as path:
             text_layer = PdfParser().analyze_text_layer(path)
-            if text_layer.needs_ocr:
-                template.status = "failed"
-                template.error_message = text_layer.message
-                audit.log(
-                    db,
-                    audit.TEMPLATE_ANALYZED,
-                    template_id=template.id,
-                    details={"needs_ocr": True, **text_layer.to_dict()},
-                )
-                db.commit()
-                return {"status": "failed", "needs_ocr": True}
-            schema = FieldDetector().build_schema(path)
-            # Record what the blank form already shows in each signature/date
-            # slot, so a contract is only "signed" where the contractor added ink.
-            schema = PdfParser().with_template_baseline(path, schema)
-            # Where each slot's visible fill line is (additive `rule_y` key), so
-            # the final PDF and the signing preview sit marks on the same ink.
-            schema = with_rule_y(path, schema)
+            if not text_layer.needs_ocr:
+                schema = FieldDetector().build_schema(path)
+                # Record what the blank form already shows in each signature/date
+                # slot, so a contract is only "signed" where the contractor added ink.
+                schema = PdfParser().with_template_baseline(path, schema)
+                # Where each slot's visible fill line is (additive `rule_y` key), so
+                # the final PDF and the signing preview sit marks on the same ink.
+                schema = with_rule_y(path, schema)
+
+        template = db.get(Template, UUID(template_id))
+        if template is None:
+            # Deleted by an admin while it was being analysed: nothing to record.
+            logger.warning("Template %s was deleted during analysis", template_id)
+            return {"status": "missing"}
+        if schema is None:
+            template.status = "failed"
+            template.error_message = text_layer.message
+            audit.log(
+                db,
+                audit.TEMPLATE_ANALYZED,
+                template_id=template.id,
+                details={"needs_ocr": True, **text_layer.to_dict()},
+            )
+            db.commit()
+            return {"status": "failed", "needs_ocr": True}
 
         template.field_schema = schema
         template.page_count = len(schema.get("pages", []))

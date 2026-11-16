@@ -32,6 +32,8 @@ export interface BulkPlaced {
   signature_id: string;
   page_number: number;
   bbox: BBox;
+  /** sha256 of the one image all placed rows share (absent on an older server). */
+  signature_hash?: string | null;
 }
 
 /** A slot the server deliberately left alone. Today the only reason is
