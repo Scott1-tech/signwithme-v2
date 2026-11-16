@@ -135,7 +135,7 @@ export function ContractUpload() {
 
   const openPicker = useCallback(() => fileInputRef.current?.click(), []);
 
-  const upload = async () => {
+  const upload = async (attempt = 1): Promise<void> => {
     if (!file || !templateId) return;
     setDuplicates(null);
     setBusy('uploading');
@@ -144,7 +144,22 @@ export function ContractUpload() {
       const result = await contractsApi.upload(templateId, file, contractorName, contractorEmail);
       navigate(`/contracts/${result.contract_id}/review`);
     } catch (cause) {
-      setError(describeUploadError(cause));
+      if (cause instanceof TypeError) {
+        // The connection broke, and the server may already have stored the file.
+        // Look for it before trying again, so a retry does not store the PDF twice.
+        const found = await findDuplicates(file);
+        if (found.length > 0) {
+          setDuplicates(found);
+        } else if (attempt < 2) {
+          await upload(attempt + 1);
+        } else {
+          setError(
+            'The connection to the server broke before the upload finished. Check the contract list before uploading again, so the file is not stored twice.',
+          );
+        }
+      } else {
+        setError(describeUploadError(cause));
+      }
     } finally {
       setBusy(null);
     }
