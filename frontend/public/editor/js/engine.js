@@ -237,6 +237,9 @@
         this.root.innerHTML = '';
         this.pages = [];
         this.deselectAll();
+        this.registry = new Map();
+        this.overlaySeq = 0;
+        this.structureChanged = false;
 
         for (let i = 1; i <= this.pdfDoc.numPages; i++) {
           await this._buildPage(i);
@@ -496,6 +499,9 @@
         if (rebuildDom) {
           state.annotCanvas.width = viewport.width;
           state.annotCanvas.height = viewport.height;
+          // The text edits made on this page are carried over the rebuild (zoom, rotate).
+          const carried = this._snapshotPage(state);
+          this._dropPageEntries(state);
           state.domLayer.innerHTML = '';
 
           // 1. Matn qatorlari va matn ichidagi "_____" chiziqlarni yaratish
@@ -510,7 +516,7 @@
             if (duplicate) continue;
             createdLineRects.push(ln);
 
-            this._createEditableLineWidget(
+            const vector = this._createEditableLineWidget(
               state,
               ln.x,
               ln.y - lineH + 2,
@@ -520,12 +526,14 @@
               10.5,
               ln.color
             );
+            this._register(vector, state, 'vector', '', ln.x, ln.y - lineH + 2, ln.w, lineH, vector.querySelector('.line-text-input'));
           }
 
           // 3. Canvas'dan ushlab qolingan Binar Vektor Checkboxlarni jonli qilish
           for (const bx of interceptedBoxes) {
             this._createAutoCheckbox(state, bx.x, bx.y, bx.w, bx.h);
           }
+          this._restorePage(state, carried);
         }
       }
 
@@ -650,7 +658,7 @@
 
         for (const uLine of mergedUnderscores) {
           if (uLine.w >= 14 * scale) {
-            this._createEditableLineWidget(
+            const blank = this._createEditableLineWidget(
               state,
               uLine.x,
               uLine.topY,
@@ -660,6 +668,7 @@
               uLine.pdfFontSize,
               '#1e293b'
             );
+            this._register(blank, state, 'underscore', '', uLine.x, uLine.topY, uLine.w, uLine.h * 0.96, blank.querySelector('.line-text-input'));
             createdLineRects.push({ x: uLine.x, y: uLine.baselineY, w: uLine.w });
           }
         }
@@ -714,6 +723,7 @@
           div.style.fontWeight = ln.isBold ? 'bold' : 'normal';
           div.style.fontStyle = ln.isItalic ? 'italic' : 'normal';
           div.style.color = ln.color;
+          this._register(div, state, 'line', ln.str, ln.x, ln.topY, ln.width, ln.height);
 
           div.addEventListener('mousedown', (e) => {
             if (this.activeTool !== 'text') return;
@@ -870,6 +880,191 @@
         });
 
         state.domLayer.appendChild(box);
+        this._register(box, state, 'checkbox', '', x, topY, w, h);
+      }
+
+      /*
+       * EDIT REGISTRY. Every text line, blank and checkbox the page shows, with
+       * where it sits in the PDF (points, unrotated, relative to the crop box).
+       * The save turns what changed here into the server's text operations.
+       */
+      _register(el, state, kind, origText, x, topY, width, height, textEl = null) {
+        if (!this.registry) this.registry = new Map();
+        this.overlaySeq = (this.overlaySeq || 0) + 1;
+        const id = `ov${this.overlaySeq}`;
+        el.dataset.lid = id;
+        this.registry.set(id, {
+          el,
+          textEl: textEl || el,
+          kind,
+          origText,
+          state,
+          pt: this._pageRect(state, x, topY, width, height),
+          px: { x, top: topY, w: width, h: height },
+        });
+      }
+
+      _pageRect(state, x, topY, width, height) {
+        const view = state.pdfPage.view;
+        const a = state.viewport.convertToPdfPoint(x, topY);
+        const b = state.viewport.convertToPdfPoint(x + width, topY + height);
+        const left = Math.min(a[0], b[0]) - view[0];
+        const right = Math.max(a[0], b[0]) - view[0];
+        const top = view[3] - Math.max(a[1], b[1]);
+        const bottom = view[3] - Math.min(a[1], b[1]);
+        return { x: left, y: top, w: right - left, h: bottom - top };
+      }
+
+      _dropPageEntries(state) {
+        if (!this.registry) return;
+        for (const [id, entry] of this.registry) {
+          if (entry.state === state) this.registry.delete(id);
+        }
+      }
+
+      // Did the person move, hide or resize one of this page's line widgets?
+      _geometryChanged(entry) {
+        const el = entry.el;
+        const left = parseFloat(el.style.left) || 0;
+        const top = parseFloat(el.style.top) || 0;
+        const width = parseFloat(el.style.width) || 0;
+        return Math.abs(left - entry.px.x) > 0.5
+          || Math.abs(top - entry.px.top) > 0.5
+          || Math.abs(width - entry.px.w) > 0.5;
+      }
+
+      // Changes a rebuilt page could not carry over (zoom and rotate rebuild the page).
+      _hasDomOnlyChanges(state) {
+        if (state.domLayer.querySelector('.added-obj, .sejda-box-item')) return true;
+        for (const entry of (this.registry || new Map()).values()) {
+          if (entry.state !== state) continue;
+          if (entry.kind === 'line') {
+            const moved = Math.abs(parseFloat(entry.el.dataset.dx) || 0) > 0.001
+              || Math.abs(parseFloat(entry.el.dataset.dy) || 0) > 0.001;
+            if (moved) return true;
+          } else if (entry.kind !== 'checkbox') {
+            if (entry.el.classList.contains('line-hidden') || this._geometryChanged(entry)) return true;
+          }
+        }
+        return false;
+      }
+
+      // The changes a page carries over a rebuild: changed lines, erased lines, checkbox states.
+      _snapshotPage(state) {
+        const items = [];
+        for (const entry of (this.registry || new Map()).values()) {
+          if (entry.state !== state) continue;
+          const erased = !entry.el.isConnected;
+          const value = erased ? '' : entry.textEl.textContent;
+          if (!erased && value === entry.origText) continue;
+          items.push({
+            kind: entry.kind,
+            origText: entry.origText,
+            cx: entry.pt.x + entry.pt.w / 2,
+            cy: entry.pt.y + entry.pt.h / 2,
+            erased,
+            value,
+          });
+        }
+        return items;
+      }
+
+      // Puts a snapshot back on the rebuilt page: the same kind and text, at the same place in points.
+      _restorePage(state, items) {
+        let lost = 0;
+        for (const item of items) {
+          let match = null;
+          let best = 3;
+          for (const entry of this.registry.values()) {
+            if (entry.state !== state || entry.kind !== item.kind || entry.origText !== item.origText) continue;
+            const distance = Math.hypot(entry.pt.x + entry.pt.w / 2 - item.cx, entry.pt.y + entry.pt.h / 2 - item.cy);
+            if (distance < best) {
+              best = distance;
+              match = entry;
+            }
+          }
+          if (!match) {
+            lost += 1;
+          } else if (item.erased) {
+            match.el.remove();
+          } else if (match.kind === 'checkbox') {
+            match.el.textContent = item.value;
+          } else {
+            match.textEl.textContent = item.value;
+          }
+        }
+        if (lost > 0) {
+          alert(`${lost} ta o‘zgarish sahifa qayta chizilganda tiklanmadi. Iltimos, tekshirib qayta kiriting.`);
+        }
+      }
+
+      _hasPendingChanges() {
+        const plan = this.collectEdits();
+        return plan.edits.length > 0 || plan.unsupported.length > 0;
+      }
+
+      /*
+       * What the person changed, for the save. `edits` is the changed text;
+       * `unsupported` lists the changes the save cannot write yet. Any of them
+       * blocks the save, so nothing changes without the person knowing.
+       */
+      collectEdits() {
+        const edits = [];
+        const unsupported = [];
+        const place = (state) => `Sahifa ${state.pageIndex + 1}`;
+        const change = (entry, newText, blank) => ({
+          pageIndex: entry.state.pageIndex,
+          ptX: entry.pt.x,
+          ptY: entry.pt.y,
+          ptW: entry.pt.w,
+          ptH: entry.pt.h,
+          origText: blank ? '' : entry.origText,
+          newText,
+          blank,
+        });
+        for (const entry of (this.registry || new Map()).values()) {
+          const { el, kind, state } = entry;
+          const erased = !el.isConnected;
+          const text = erased ? '' : entry.textEl.textContent.replace(/ /g, ' ');
+          if (kind === 'checkbox') {
+            if (erased || text !== entry.origText) {
+              unsupported.push(`${place(state)}: belgi qutisini o‘zgartirish hozircha saqlanmaydi.`);
+            }
+          } else if (kind === 'line') {
+            const moved = Math.abs(parseFloat(el.dataset.dx) || 0) > 0.001
+              || Math.abs(parseFloat(el.dataset.dy) || 0) > 0.001;
+            if (moved) unsupported.push(`${place(state)}: siljitilgan matn hozircha saqlanmaydi.`);
+            if (erased) edits.push(change(entry, '', false));
+            else if (text !== entry.origText) edits.push(change(entry, text, false));
+          } else if (kind === 'added') {
+            // A line the person added reaches the file only as text in a blank.
+            if (!erased && text.trim()) edits.push(change(entry, text.trim(), true));
+          } else {
+            // 'underscore' is a blank in the text; 'vector' is a line drawn in the page.
+            if (!erased && (el.classList.contains('line-hidden') || this._geometryChanged(entry))) {
+              unsupported.push(`${place(state)}: chiziqni yashirish yoki o‘zgartirish hozircha saqlanmaydi.`);
+            }
+            if (kind === 'vector' && erased) {
+              unsupported.push(`${place(state)}: chiziqni o‘chirish hozircha saqlanmaydi.`);
+            } else if (kind === 'underscore' && erased) {
+              edits.push(change(entry, '', true));
+            } else if (!erased && text.trim()) {
+              edits.push(change(entry, text.trim(), true));
+            }
+          }
+        }
+        for (const state of this.pages) {
+          if (state.rotation) {
+            unsupported.push(`${place(state)}: sahifa burilgan — burish hozircha saqlanmaydi (0° ga qaytaring).`);
+          }
+          if (state.domLayer.querySelector('.added-obj, .sejda-box-item')) {
+            unsupported.push(`${place(state)}: qo‘shilgan matn yoki shakl hozircha saqlanmaydi.`);
+          }
+        }
+        if (this.structureChanged) {
+          unsupported.push('Sahifalar qo‘shilgan yoki o‘chirilgan — bu hozircha saqlanmaydi.');
+        }
+        return { edits, unsupported: [...new Set(unsupported)] };
       }
 
       _recordModification(node) {
@@ -997,6 +1192,10 @@
           const btn = e.target.closest('button');
           if (!btn) return;
           const act = btn.dataset.act;
+          if (['zin', 'zout', 'rcw', 'rccw'].includes(act) && this._hasDomOnlyChanges(state)) {
+            alert('Bu sahifada hozircha saqlanmaydigan o‘zgarishlar bor (siljitish, yashirish yoki shakl). Ularni bekor qiling, so‘ng masshtabni yoki burilishni o‘zgartiring.');
+            return;
+          }
           if (act === 'zin') {
             state.scale = Math.min(2.4, state.scale + 0.15);
             await this._renderStage(state, true);
@@ -1010,14 +1209,18 @@
             state.rotation = (state.rotation + 270) % 360;
             await this._renderStage(state, true);
           } else if (act === 'del') {
+            if (this._hasPendingChanges()) return alert('Avval matndagi o‘zgarishlarni saqlang yoki sahifani yangilang, so‘ng sahifalarni o‘zgartiring.');
             const doc = await PDFDocument.load(this.pdfBytes);
             if (doc.getPageCount() <= 1) return alert('Yagona sahifani o\'chirib bo\'lmaydi.');
             doc.removePage(state.pageIndex);
             await this.loadPDF(await doc.save());
+            this.structureChanged = true;
           } else if (act === 'ins') {
+            if (this._hasPendingChanges()) return alert('Avval matndagi o‘zgarishlarni saqlang yoki sahifani yangilang, so‘ng sahifalarni o‘zgartiring.');
             const doc = await PDFDocument.load(this.pdfBytes);
             doc.insertPage(state.pageIndex, [612, 792]);
             await this.loadPDF(await doc.save());
+            this.structureChanged = true;
           }
         });
 
@@ -1093,6 +1296,7 @@
                 'Times New Roman, Times, serif',
                 10.5
               );
+              this._register(widget, state, 'added', '', x, startY - lineH + 2, w, lineH, widget.querySelector('.line-text-input'));
               this.undoStack.push({ type: 'spawn', node: widget });
               const inp = widget.querySelector('.line-text-input');
               if (inp) inp.focus();
@@ -1785,28 +1989,40 @@
           statusLine.textContent = 'Shartnoma hali yuklanmadi.';
           return;
         }
-        // One request id for the whole save, so sending it again after a confirmation is safe.
-        const commitRequestId = newCommitRequestId();
+        // Only the lines that changed are written; the rest of the file stays as it is.
+        const plan = engine.collectEdits();
+        if (plan.unsupported.length) {
+          statusLine.textContent = `Saqlanmadi: ${plan.unsupported.join(' ')}`;
+          return;
+        }
+        if (!plan.edits.length) {
+          statusLine.textContent = 'O‘zgarish yo‘q.';
+          return;
+        }
         setBusy(true, 'Saqlanmoqda…');
         try {
-          const pdfBytes = await engine.exportEditedPDF(null, { download: false });
-          let saved;
-          try {
-            saved = await saveContractVersion(contractId, baseVersionNo, pdfBytes, commitRequestId, false);
-          } catch (error) {
-            if (!(error instanceof EditorApiError) || error.code !== 'signatures_present') throw error;
-            const count = error.details.count || 0;
-            const confirmed = window.confirm(
+          const result = await saveEditsToContract(contractId, baseVersionNo, plan.edits, {
+            confirmSignatures: (count) => window.confirm(
               `Bu shartnomada ${count} ta imzo bor. Hujjat o‘zgargani uchun ular o‘chiriladi va shartnoma qayta imzolanadi. Davom etamizmi?`,
-            );
-            if (!confirmed) {
-              statusLine.textContent = 'Saqlanmadi: imzolar o‘chirilishi bekor qilindi.';
-              return;
-            }
-            saved = await saveContractVersion(contractId, baseVersionNo, pdfBytes, commitRequestId, true);
+            ),
+          });
+          if (result.status === 'blocked') {
+            statusLine.textContent = `Saqlanmadi: ${result.messages.join(' ')}`;
+            return;
           }
-          baseVersionNo = saved.version.version_no;
-          statusLine.textContent = describeSavedVersion(saved);
+          if (result.status === 'nothing') {
+            statusLine.textContent = 'O‘zgarish yo‘q.';
+            return;
+          }
+          if (result.status === 'cancelled') {
+            statusLine.textContent = 'Saqlanmadi: imzolar o‘chirilishi bekor qilindi.';
+            return;
+          }
+          // Show the file the server now holds, so the next edits build on it.
+          const loaded = await loadContractVersion(contractId);
+          await engine.loadPDF(loaded.bytes);
+          baseVersionNo = loaded.versionNo;
+          statusLine.textContent = describeSavedVersion(result.version);
           notifyContractPage('editor:saved');
           buildPageList(engine).catch(() => {});
         } catch (error) {
