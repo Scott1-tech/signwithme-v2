@@ -40,6 +40,8 @@ export function useComparison(contractId: string | undefined): UseComparison {
     } catch (cause) {
       if (cause instanceof ApiError && cause.status === 409) {
         setError(null); // still processing; the poll will pick it up
+      } else if (cause instanceof TypeError) {
+        // A dropped connection: keep what is shown; the next poll or reload tries again.
       } else {
         setError(cause instanceof Error ? cause.message : 'Failed to load comparison');
       }

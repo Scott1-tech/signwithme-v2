@@ -241,6 +241,14 @@ export function Workspace() {
     if (loadError) setError(loadError);
   }, [loadError]);
 
+  // A single dropped request ("Failed to fetch": no answer reached the browser)
+  // must not leave a permanent banner: the next requests usually go through.
+  useEffect(() => {
+    if (!error || !/failed to fetch|networkerror|load failed/i.test(error)) return undefined;
+    const timer = window.setTimeout(() => setError((current) => (current === error ? null : current)), 8000);
+    return () => window.clearTimeout(timer);
+  }, [error]);
+
   // F2: while the draft carries page ops the viewer shows the WHOLE draft (`usePageStructure`).
   const [draftBytes, setDraftBytes] = useState<ArrayBuffer | null>(null);
   const viewer = usePdfViewer(draftBytes ?? source);
