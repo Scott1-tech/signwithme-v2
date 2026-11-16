@@ -1376,7 +1376,7 @@
        *    to'g'ridan-to'g'ri asl PDF sahifasiga haqiqiy binar operatorlar sifatida yozadi!
        * 4. Yangilangan binar PDF ni ham yuklab oladi, ham muharrirga qayta yuklaydi!
        */
-      async exportEditedPDF(filename = 'sejda-v5-binary-edited.pdf') {
+      async exportEditedPDF(filename = 'sejda-v5-binary-edited.pdf', { download = true } = {}) {
         this.deselectAll();
         const { PDFDocument, StandardFonts, rgb, degrees } = PDFLib;
 
@@ -1560,10 +1560,13 @@
         // Yangilangan haqiqiy binar PDF ni darhol muharrirning o'ziga ham qayta yuklaymiz!
         await this.loadPDF(outBytes);
 
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(new Blob([outBytes], { type: 'application/pdf' }));
-        a.download = filename;
-        a.click();
+        if (download) {
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(new Blob([outBytes], { type: 'application/pdf' }));
+          a.download = filename;
+          a.click();
+        }
+        return outBytes;
       }
     }
 
@@ -1678,11 +1681,14 @@
       const outputName = contractId ? `contract-${contractId}-edited.pdf` : 'sejda-v5-binary-edited.pdf';
       const statusLine = document.getElementById('editor-status');
       if (contractId) document.getElementById('back-link').href = `/contracts/${contractId}`;
+      let baseVersionNo = null; // the version the editor works on; a save builds on it
       try {
         if (contractId) {
-          statusLine.textContent = 'Shartnoma PDF yuklanmoqda…';
-          await engine.loadPDF(await fetchContractPdf(contractId));
-          statusLine.textContent = '';
+          statusLine.textContent = 'Shartnoma yuklanmoqda…';
+          const loaded = await loadContractVersion(contractId);
+          baseVersionNo = loaded.versionNo;
+          await engine.loadPDF(loaded.bytes);
+          statusLine.textContent = `Versiya ${baseVersionNo} ochildi.`;
         } else {
           await engine.loadPDF(await buildBinarySamplePdf());
           statusLine.textContent = 'Namuna hujjat. Shartnomani tahrirlash uchun shartnoma sahifasidagi «Edit PDF» tugmasini bosing.';
@@ -1779,7 +1785,50 @@
           await engine.exportEditedPDF(outputName);
         } finally {
           btn.disabled = false;
-          btn.innerHTML = `Apply changes (Binary Save) <i class="fa-solid fa-chevron-right" style="font-size:13px;"></i>`;
+          btn.innerHTML = `PDF yuklab olish <i class="fa-solid fa-download" style="font-size:13px;"></i>`;
+        }
+      };
+
+      // «Shartnomaga saqlash»: the edited file becomes the contract's next version.
+      const saveButton = document.getElementById('btn-save-contract');
+      const downloadButton = document.getElementById('btn-apply');
+      saveButton.style.display = contractId ? '' : 'none';
+      const setBusy = (busy, text) => {
+        saveButton.disabled = busy;
+        downloadButton.disabled = busy;
+        if (text) statusLine.textContent = text;
+      };
+      saveButton.onclick = async () => {
+        if (!contractId || baseVersionNo === null || !engine.pdfBytes) {
+          statusLine.textContent = 'Shartnoma hali yuklanmadi.';
+          return;
+        }
+        // One request id for the whole save, so sending it again after a confirmation is safe.
+        const commitRequestId = newCommitRequestId();
+        setBusy(true, 'Saqlanmoqda…');
+        try {
+          const pdfBytes = await engine.exportEditedPDF(null, { download: false });
+          let saved;
+          try {
+            saved = await saveContractVersion(contractId, baseVersionNo, pdfBytes, commitRequestId, false);
+          } catch (error) {
+            if (!(error instanceof EditorApiError) || error.code !== 'signatures_present') throw error;
+            const count = error.details.count || 0;
+            const confirmed = window.confirm(
+              `Bu shartnomada ${count} ta imzo bor. Hujjat o‘zgargani uchun ular o‘chiriladi va shartnoma qayta imzolanadi. Davom etamizmi?`,
+            );
+            if (!confirmed) {
+              statusLine.textContent = 'Saqlanmadi: imzolar o‘chirilishi bekor qilindi.';
+              return;
+            }
+            saved = await saveContractVersion(contractId, baseVersionNo, pdfBytes, commitRequestId, true);
+          }
+          baseVersionNo = saved.version.version_no;
+          statusLine.textContent = describeSavedVersion(saved);
+        } catch (error) {
+          statusLine.textContent = describeSaveFailure(error);
+        } finally {
+          setBusy(false);
         }
       };
     });

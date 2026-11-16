@@ -16,9 +16,10 @@ only FILLS form fields -- every op `field.value`; anything else is 403
 """
 from __future__ import annotations
 
+import re
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Path, Query, Request, Response
+from fastapi import APIRouter, Depends, File, Form, Path, Query, Request, Response, UploadFile
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
@@ -27,9 +28,10 @@ from app.api.deps import (
     assert_can_view_contract,
     can_edit_document,
     get_contract_or_404,
+    read_pdf_upload,
 )
 from app.core.database import get_db
-from app.core.exceptions import NotFoundError, PayloadTooLargeError
+from app.core.exceptions import NotFoundError, PayloadTooLargeError, ValidationError
 from app.core.security import ROLE_ADMIN, client_ip, get_current_user
 from app.models.contract import Contract
 from app.models.document import Document, DocumentVersion
@@ -38,6 +40,7 @@ from app.schemas.document import (
     BLOCK_ID_PATTERN,
     MAX_BODY_BYTES,
     PAGE_UID_PATTERN,
+    REQUEST_ID_PATTERN,
     CommitIn,
     CommitOut,
     DetectFieldsIn,
@@ -550,6 +553,34 @@ def commit_draft(
     contract, fill_only = _drafter(db, contract_id, user)
     document = _document(db, contract, user)
     return documents.commit_draft(db, contract, document, user, body, request, fill_only=fill_only)
+
+
+@router.post("/upload", response_model=CommitOut, status_code=201)
+async def upload_version(
+    contract_id: UUID,
+    request: Request,
+    file: UploadFile = File(...),
+    base_version_no: int = Form(..., ge=1),
+    commit_request_id: str = Form(...),
+    discard_signatures: bool = Form(False),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """The standalone editor's «Save to contract»: an edited PDF of the current
+    version becomes the next version (`documents.commit_upload`). It needs the
+    right to change the document, like every other write."""
+    contract = _editable(db, contract_id, user)
+    document = _document(db, contract, user)
+    if not re.fullmatch(REQUEST_ID_PATTERN, commit_request_id):
+        raise ValidationError("commit_request_id must be 8 to 64 letters, digits, '-' or '_'")
+    data = await read_pdf_upload(file)
+    return documents.commit_upload(
+        db, contract, document, user, data,
+        base_version_no=base_version_no,
+        commit_request_id=commit_request_id,
+        discard_signatures=discard_signatures,
+        request=request,
+    )
 
 
 # -- B3: form fields --------------------------------------------------------------------------

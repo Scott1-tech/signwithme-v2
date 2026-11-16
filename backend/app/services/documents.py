@@ -873,6 +873,216 @@ def commit_draft(db: Session, contract: Contract, document: Document, user: User
     }
 
 
+def commit_upload(db: Session, contract: Contract, document: Document, user: User, data: bytes, *,
+                  base_version_no: int, commit_request_id: str, discard_signatures: bool,
+                  request=None) -> dict:
+    """A whole edited PDF, saved by the standalone editor, becomes the next version.
+
+    The rules of a content commit (`commit_draft`) apply: a changed file removes
+    the contract's signatures, which the caller confirms (409 `signatures_present`
+    until `discard_signatures`); review is reset; the contract is analysed again.
+    The editor cannot say which words it changed, so every page counts as changed
+    and the reviewer's corrections on those pages are dropped. The file must keep
+    every page: each page keeps its identity (`page_uid`) by its position.
+    """
+    from app.core.security import client_ip
+    from app.services import document_review, pdf_engine
+
+    # (1) idempotency: a repeated request answers with the version it made
+    replay = db.scalar(select(DocumentVersion).where(DocumentVersion.commit_request_id == commit_request_id))
+    if replay is not None:
+        if replay.document_id != document.id:
+            raise DocumentError(409, "commit_request_id_reused", "This commit id was used for another document")
+        return _commit_replay(db, replay)
+
+    # (2) validation
+    assert_not_completed(contract)
+    assert_not_busy(contract)
+    base = db.get(DocumentVersion, document.current_version_id)
+    if base is None or base.version_no != base_version_no:
+        raise DocumentError(
+            409, "base_outdated", "A newer version exists; reload the document",
+            {"current_version_no": base.version_no if base is not None else None},
+        )
+    draft = document.draft
+    if draft is not None and lease_active(draft):
+        raise DocumentError(
+            409, "draft_locked", "Someone is editing this document in the workspace right now",
+            {"owner_name": owner_name(db, draft.owner_user_id)},
+        )
+    try:
+        pages, _warnings = pdf_engine.inspect_pages(data)
+    except pdf_engine.EngineError as exc:
+        raise from_engine(exc) from exc
+    base_pages = {page.position: page for page in base.pages}
+    if len(pages) != len(base_pages) or any(info.position not in base_pages for info in pages):
+        raise DocumentError(
+            422, "page_count_changed", "The edited file must keep every page of the document",
+            {"pages_before": len(base_pages), "pages_after": len(pages)},
+        )
+    file_hash = hashlib.sha256(data).hexdigest()
+    if file_hash == base.file_hash:
+        return {
+            "version": version_out(db, base),
+            "content_changed": False,
+            "review_reset": False,
+            "reparse_started": False,
+            "remapped": {"signatures_kept": 0, "signatures_removed": 0},
+            "warnings": [{"code": "unchanged"}],
+        }
+    signatures = list(db.scalars(select(Signature).where(Signature.contract_id == contract.id)))
+    if signatures and not discard_signatures:
+        raise DocumentError(
+            409, "signatures_present",
+            "This document has signatures; saving a changed file removes them",
+            {"count": len(signatures)},
+        )
+
+    # (3) the file, outside the transaction
+    next_no = (db.scalar(select(func.max(DocumentVersion.version_no)).where(
+        DocumentVersion.document_id == document.id)) or 0) + 1
+    new_key = version_key(contract.id, next_no, file_hash)
+    storage.put_bytes(new_key, data)
+
+    removed_keys: list[str] = []
+    review_reset = False
+    ip = client_ip(request) if request is not None else None
+    try:
+        new_version = DocumentVersion(
+            document_id=document.id,
+            version_no=next_no,
+            parent_version_id=base.id,
+            kind="edit",
+            file_path=new_key,
+            file_hash=file_hash,
+            file_bytes=len(data),
+            page_count=len(pages),
+            ops_applied=[],
+            op_summary={"total": 0, "by_kind": {}, "by_layer": {}},
+            content_changed=True,
+            review_reset=False,
+            engine="upload",
+            engine_ref=None,
+            commit_request_id=commit_request_id,
+            created_by=user.id,
+        )
+        new_version.pages = [
+            DocumentPage(
+                position=info.position,
+                page_uid=base_pages[info.position].page_uid,
+                origin_page=base_pages[info.position].origin_page,
+                rotation=info.rotation,
+                width_pt=info.width_pt,
+                height_pt=info.height_pt,
+                has_text=info.has_text,
+                scanned=info.scanned,
+            )
+            for info in pages
+        ]
+        db.add(new_version)
+        db.flush()
+        swapped = db.execute(
+            update(Document)
+            .where(Document.id == document.id, Document.current_version_id == base.id)
+            .values(current_version_id=new_version.id, updated_at=now_utc())
+            .execution_options(synchronize_session=False)
+        )
+        if swapped.rowcount != 1:
+            raise DocumentError(409, "base_outdated", "A newer version exists; reload the document", {})
+        if draft is not None:
+            # Its lease has run out, and it was made on the version this one replaces.
+            db.delete(draft)
+        for signature in signatures:
+            removed_keys.append(signature.signature_image_path)
+            audit.log(
+                db,
+                audit.SIGNATURE_REMOVED,
+                contract_id=contract.id,
+                actor=user,
+                details={
+                    "signature_id": str(signature.id),
+                    "reason": "superseded_by_version",
+                    "version_no": new_version.version_no,
+                },
+                ip_address=ip,
+            )
+            db.delete(signature)
+        if signatures:
+            audit.log(
+                db,
+                audit.SIGNATURES_SUPERSEDED,
+                contract_id=contract.id,
+                actor=user,
+                details={"count": len(signatures), "version_no": new_version.version_no},
+                ip_address=ip,
+            )
+        whole_pages = [
+            {
+                "page_uid": page.page_uid,
+                "rect": {"x_pt": 0.0, "y_pt": 0.0, "w_pt": float(page.width_pt), "h_pt": float(page.height_pt)},
+            }
+            for page in new_version.pages
+        ]
+        review_reset = document_review.on_content_commit(
+            db, contract, user,
+            version_no=new_version.version_no,
+            changed_regions=whole_pages,
+            source=_source_for(new_version),
+        )
+        new_version.review_reset = review_reset
+        audit.log(
+            db,
+            audit.DOCUMENT_VERSION_COMMITTED,
+            contract_id=contract.id,
+            actor=user,
+            details={
+                "version_no": new_version.version_no,
+                "parent_version_no": base.version_no,
+                "file_hash": file_hash,
+                "source": "upload",
+                "by_kind": {},
+                "content_changed": True,
+                "pages_before": base.page_count,
+                "pages_after": len(pages),
+                "changed_regions": [],
+                "redactions": [],
+                "images_removed": 0,
+                "pages_removed": [],
+                "pages_inserted": 0,
+                "markup_removed_with_page": 0,
+                "fields": {},
+                "review_reset": review_reset,
+            },
+            ip_address=ip,
+        )
+        db.commit()
+    except BaseException:
+        db.rollback()
+        storage.delete(new_key)
+        raise
+
+    for key in removed_keys:
+        try:
+            storage.delete(key)
+        except Exception:  # noqa: BLE001 - rows are gone; an orphan file is logged only
+            logger.warning("Superseded signature image %s could not be deleted", key, exc_info=True)
+
+    from app.api import contracts as contracts_api
+
+    contracts_api.process_contract_task.delay(str(contract.id))
+
+    db.expire_all()
+    current = db.get(DocumentVersion, db.get(Document, document.id).current_version_id)
+    return {
+        "version": version_out(db, current),
+        "content_changed": True,
+        "review_reset": review_reset,
+        "reparse_started": True,
+        "remapped": {"signatures_kept": 0, "signatures_removed": len(removed_keys)},
+        "warnings": [],
+    }
+
+
 def _source_for(version: DocumentVersion) -> SigningSource:
     pages = list(version.pages)
     original = version.document.original_version if version.document is not None else None
