@@ -6,7 +6,7 @@ export type CriticalIssue = MissingField | Inconsistency | FmcsaViolation;
 /** Whether signing may start here, and if not, why. */
 export interface SigningGate {
   override: ReviewOverride;
-  /** The override is on record and nothing it cannot waive (FMCSA) is open. */
+  /** The reviewer's override is on record and covers the critical issues it was given for. */
   overrideCovers: boolean;
   blocked: boolean;
   /** Blocked because no reviewer approved it yet (as opposed to open issues). */
@@ -19,24 +19,20 @@ export interface SigningGate {
 /**
  * The signing page's gate, as a pure function of what the page has loaded.
  *
- * A reviewer override waives `can_sign=false` here: the empty required fields
- * were accepted on record, so the page must not re-block on them. The server
- * remains the judge at placement and finalize; this only opens the UI.
- *
- * An override covers empty fields and cross-field inconsistencies, never an
- * FMCSA violation. If a new issue appears after approval the server answers
- * 409 at placement/finalize and the page says the contract needs review again.
+ * A reviewer override waives `can_sign=false` here: the open critical issues
+ * (empty required fields, inconsistencies, FMCSA violations) were accepted on
+ * record, so the page must not re-block on them. The server remains the judge
+ * at placement and finalize; it re-checks the override against the current
+ * comparison and answers 409 when something new has appeared.
  */
 export function computeSigningGate(
   contract: ContractDetail | null,
   result: ComparisonResult | null,
 ): SigningGate {
   const override = readOverride(contract);
-  const criticalFmcsaCount =
-    result?.fmcsa_violations.filter((violation) => violation.severity === 'critical').length ?? 0;
-  const overrideCovers = override.active && criticalFmcsaCount === 0;
+  const overrideCovers = override.active;
   // Approval is no longer required (owner decision). Only open critical issues
-  // (FMCSA and required fields) still block signing.
+  // still block signing, and an override is what lets them through.
   const blocked = result?.can_sign === false && !overrideCovers;
   const notApproved: boolean = false;
   const criticalIssues: CriticalIssue[] = result

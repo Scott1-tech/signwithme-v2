@@ -332,9 +332,9 @@
   border-left-color: var(--warn-mark);
 }
 
-/* An FMCSA violation is the only finding a reviewer cannot wave through with
-   an override, so it is the only marker that inverts. `--surface` is the
-   page's white; no new colour literal is introduced. */
+/* An FMCSA violation is the finding a reviewer has to weigh most, so it is the
+   only marker that inverts. `--surface` is the page's white; no new colour
+   literal is introduced. */
 .dash__flag--fmcsa {
   background: var(--bad);
   color: var(--surface);

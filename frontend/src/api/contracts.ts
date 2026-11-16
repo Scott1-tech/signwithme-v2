@@ -15,8 +15,8 @@ export interface OverrideNotAllowedDetails {
 
 export interface SubmitReviewOptions {
   /**
-   * Approve although critical `missing_required` fields and/or cross-field
-   * `inconsistencies` remain (never FMCSA violations). Requires notes.
+   * Approve although critical `missing_required` fields, cross-field
+   * `inconsistencies` and/or FMCSA violations remain. Requires notes.
    */
   overrideMissing?: boolean;
 }
@@ -31,9 +31,9 @@ export function describeReviewError(cause: unknown, options: SubmitReviewOptions
     if (options.overrideMissing && cause.status === 422) {
       return `Review notes must be at least ${OVERRIDE_NOTES_MIN} characters to approve with an override.`;
     }
-    // Only FMCSA violations are beyond an override now; inconsistencies can be waived.
+    // The server refuses an override only when no critical issue is open to accept.
     if (cause.status === 409 && cause.details.reason === 'override_not_allowed') {
-      return 'Override is not allowed: FMCSA violations must be corrected first. Fix the fields, re-run the comparison and try again.';
+      return 'Override is not available: no critical issue is open to accept. Re-run the comparison and try again.';
     }
   }
   return cause instanceof Error ? cause.message : 'Review failed';

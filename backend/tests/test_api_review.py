@@ -1,10 +1,10 @@
-"""Reviewer override of critical missing-required fields and critical
-inconsistencies, over HTTP.
+"""Reviewer override of critical issues, over HTTP: empty required fields,
+critical cross-field inconsistencies (since 2026-09-17) and critical FMCSA
+violations (since 2026).
 
-The engine's `can_sign` stays authoritative for FMCSA violations. A reviewer
-may approve past empty required fields and (since 2026-09-17) critical
-cross-field inconsistencies, with a reason on record; signing then only goes
-through while the current critical issues are a subset of the accepted ones.
+A reviewer may approve past any of them with a reason on record; signing then
+only goes through while the current critical issues are a subset of the
+accepted ones.
 These tests cover the review gate, the
 signing gate that re-checks the override, the audit trail, the final PDF's
 record of the override and a re-parse keeping it.
@@ -197,23 +197,27 @@ def test_without_the_override_flag_a_blocked_contract_is_still_refused(
     assert _detail(api, admin_token, uploaded_contract)["review_override"] is False
 
 
-def test_an_override_cannot_cover_an_fmcsa_violation(
-    api, uploaded_contract, admin_token, contractor_token
+def test_a_reviewer_can_override_an_fmcsa_violation_with_a_reason(
+    api, uploaded_contract, reviewer_token, contractor_token
 ):
+    """Since 2026 an FMCSA violation can be accepted too, with the reason on
+    record; the audit trail names the rule."""
     _block_on_missing(api, contractor_token, uploaded_contract)
     _patch_comparison(api, uploaded_contract, fmcsa_violations=CRITICAL_FMCSA)
 
-    response = _override(api, admin_token, uploaded_contract)
-    assert response.status_code == 409, response.text
-    body = response.json()
-    assert body["error"] == "conflict"
-    assert body["details"]["reason"] == "override_not_allowed"
-    assert body["details"]["blocking_categories"] == ["fmcsa_violations"]
+    response = _override(api, reviewer_token, uploaded_contract)
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "signing"
 
-    detail = _detail(api, admin_token, uploaded_contract)
-    assert detail["review_status"] == "pending"
-    assert detail["review_override"] is False
-    assert "review_override" not in {e["action"] for e in _trail(api, admin_token, uploaded_contract)}
+    detail = _detail(api, reviewer_token, uploaded_contract)
+    assert detail["review_override"] is True
+    assert detail["review_override_fields"] == ["p1_cdl", "fmcsa:fmcsa_dot_eligible"]
+
+    override = [e for e in _trail(api, reviewer_token, uploaded_contract) if e["action"] == "review_override"]
+    assert len(override) == 1
+    assert override[0]["details"]["fmcsa_rules"] == [
+        {"rule": "fmcsa_dot_eligible", "issue": "Contractor is not confirmed DOT eligible.", "page": 2}
+    ]
 
 
 def test_a_reviewer_can_override_a_critical_inconsistency_with_a_reason(
@@ -266,22 +270,18 @@ def test_missing_fields_and_inconsistencies_are_overridden_together(
     ]
 
 
-def test_an_fmcsa_violation_still_blocks_an_inconsistency_override(
+def test_an_fmcsa_violation_is_overridden_together_with_an_inconsistency(
     api, uploaded_contract, admin_token, contractor_token
 ):
-    """Was `test_both_blocking_categories_are_reported_together`: inconsistencies
-    are no longer a blocking category, so only FMCSA is reported."""
+    """Both kinds are accepted in one approval; the keys list them in order."""
     _block_on_inconsistency(api, contractor_token, uploaded_contract)
     _patch_comparison(api, uploaded_contract, fmcsa_violations=CRITICAL_FMCSA)
     response = _override(api, admin_token, uploaded_contract)
-    assert response.status_code == 409
-    assert response.json()["details"] == {
-        "reason": "override_not_allowed",
-        "blocking_categories": ["fmcsa_violations"],
-    }
-    detail = _detail(api, admin_token, uploaded_contract)
-    assert detail["review_status"] == "pending"
-    assert detail["review_override"] is False
+    assert response.status_code == 200, response.text
+    assert _detail(api, admin_token, uploaded_contract)["review_override_fields"] == [
+        "inconsistency:cdl_mismatch",
+        "fmcsa:fmcsa_dot_eligible",
+    ]
 
 
 def test_an_inconsistency_override_without_a_real_reason_is_refused(
@@ -486,6 +486,27 @@ def test_an_inconsistency_override_can_be_signed_and_the_pdf_records_it(
         f"Reviewer override: {REASON} - inconsistencies: "
         "CDL numbers do not match across pages (pages 1, 2)"
     )
+    assert metadata.get("/Keywords") == "reviewer-override"
+
+
+def test_an_fmcsa_override_can_be_signed_and_the_pdf_records_it(
+    api, uploaded_contract, admin_token, contractor_token, signature_data_url
+):
+    _block_on_missing(api, contractor_token, uploaded_contract)
+    _patch_comparison(api, uploaded_contract, fmcsa_violations=CRITICAL_FMCSA)
+    assert _override(api, admin_token, uploaded_contract).status_code == 200
+
+    placed = _place(
+        api, contractor_token, uploaded_contract, signature_data_url,
+        field_id="p1_contractor_signature",
+    )
+    assert placed.status_code == 201, placed.text
+    finalized = _finalize(api, contractor_token, uploaded_contract)
+    assert finalized.status_code == 200, finalized.text
+
+    download = api.get(f"/api/download/{uploaded_contract}/final", headers=auth(contractor_token))
+    metadata = PdfReader(io.BytesIO(download.content)).metadata
+    assert "FMCSA: Contractor is not confirmed DOT eligible. (page 2)" in metadata.subject
     assert metadata.get("/Keywords") == "reviewer-override"
 
 

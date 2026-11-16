@@ -70,8 +70,10 @@ from app.services.pdf_builder import (
     sha256_bytes,
 )
 from app.services.review_override import (
+    FMCSA_PREFIX,
     INCONSISTENCY_PREFIX,
     NEW_ISSUES_REASON,
+    critical_fmcsa_rules,
     critical_inconsistencies,
     inconsistency_key,
     override_new_issues,
@@ -99,9 +101,9 @@ def _assert_signable(contract: Contract) -> dict:
     violations outstanding.
 
     A reviewer override (services.review_override) lets an approved contract
-    through with the critical missing fields / inconsistencies it accepted. It
-    is re-checked against the CURRENT comparison here, so an FMCSA violation or
-    any critical issue the reviewer did not accept blocks signing again.
+    through with the critical issues it accepted: missing fields, inconsistencies
+    and FMCSA violations alike. It is re-checked against the CURRENT comparison
+    here, so any critical issue the reviewer did not accept blocks signing again.
     """
     comparison = contract.comparison_result or {}
     if contract.status in ("uploaded", "parsing"):
@@ -114,7 +116,7 @@ def _assert_signable(contract: Contract) -> dict:
     # critical-issue checks below still apply.
     if not comparison.get("can_sign", False) and contract.review_override:
         # Subset gate: the override stands only while every current critical
-        # issue was accepted by the reviewer (FMCSA never is).
+        # issue was accepted by the reviewer.
         new_issues = override_new_issues(contract)
         if new_issues:
             raise ConflictError(
@@ -1266,7 +1268,7 @@ def _override_metadata(contract: Contract, index: dict[str, dict]) -> dict[str, 
     fields = [
         f"{index.get(fid, {}).get('label', fid)} ({fid})"
         for fid in accepted
-        if not fid.startswith(INCONSISTENCY_PREFIX)
+        if not fid.startswith((INCONSISTENCY_PREFIX, FMCSA_PREFIX))
     ]
     # Describe each accepted inconsistency from the current comparison (the
     # signing gate guarantees it holds nothing beyond what was accepted); a type
@@ -1285,12 +1287,30 @@ def _override_metadata(contract: Contract, index: dict[str, dict]) -> dict[str, 
                 text += f" (pages {', '.join(str(p) for p in entry['pages'])})"
             inconsistencies.append(text)
 
+    # FMCSA violations the reviewer accepted, named from the current comparison
+    # (a rule corrected since is named from its key).
+    current_fmcsa = {
+        f"{FMCSA_PREFIX}{entry['rule']}": entry
+        for entry in critical_fmcsa_rules(contract.comparison_result)
+    }
+    fmcsa: list[str] = []
+    for key in accepted:
+        if not key.startswith(FMCSA_PREFIX):
+            continue
+        entry = current_fmcsa.get(key) or {"rule": key[len(FMCSA_PREFIX):], "issue": "", "page": None}
+        text = entry["issue"] or entry["rule"]
+        if entry["page"] is not None:
+            text += f" (page {entry['page']})"
+        fmcsa.append(text)
+
     subject = f"Reviewer override: {reason}"
     sections = []
     if fields:
         sections.append(f"fields: {', '.join(fields)}")
     if inconsistencies:
         sections.append(f"inconsistencies: {', '.join(inconsistencies)}")
+    if fmcsa:
+        sections.append(f"FMCSA: {'; '.join(fmcsa)}")
     if sections:
         subject += " - " + "; ".join(sections)
     return {

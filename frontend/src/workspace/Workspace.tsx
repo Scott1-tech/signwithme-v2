@@ -584,7 +584,7 @@ export function Workspace() {
   const isReviewer = isAtLeast('reviewer');
   const canCorrect = Boolean(isReviewer && contract && contract.review_status === 'pending');
   const overrideState = useMemo(() => computeOverrideState(result), [result]);
-  const { criticalMissing, criticalInconsistencies, eligible: overrideEligible } = overrideState;
+  const { criticalMissing, criticalInconsistencies, criticalFmcsa, eligible: overrideEligible } = overrideState;
   const sameAsTemplate = readIdenticalTemplate(result?.template_match);
   const notesSufficient = notes.trim().length >= OVERRIDE_NOTES_MIN;
   const override = readOverride(contract);
@@ -618,6 +618,10 @@ export function Workspace() {
     }
     if (mismatches > 0) {
       parts.push(`${mismatches} cross-field inconsistenc${mismatches === 1 ? 'y' : 'ies'}`);
+    }
+    const fmcsaCount = criticalFmcsa.length;
+    if (fmcsaCount > 0) {
+      parts.push(`${fmcsaCount} FMCSA violation${fmcsaCount === 1 ? '' : 's'}`);
     }
     const confirmed = window.confirm(
       `You are approving a contract with ${parts.join(' and ')}. ` +

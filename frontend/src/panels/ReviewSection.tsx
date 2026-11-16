@@ -7,8 +7,9 @@ import type { ComparisonResult, PageIssue } from '../types/comparison';
 import type { ContractDetail } from '../types/contract';
 
 const NOTES_EXAMPLE = "e.g. CDL verified against the driver's license copy; the letter on page 14 is a typo";
-/** Approval is removed (owner decision): these flags keep the old blocks out of
- *  the page without a literal `false &&` in the code. */
+/** The ordinary decision (approve for signing, reject) is removed (owner decision).
+ *  This flag keeps those buttons out of the page without a literal `false &&` in
+ *  the code. The override card is shown only while critical issues block signing. */
 const SHOW_DECISION: boolean = false;
 const SHOW_APPROVED_CARD: boolean = false;
 
@@ -37,10 +38,10 @@ interface Props {
 }
 
 /**
- * The review part of the right-hand panel: the comparison sidebar, the
- * reviewer's decision (with the override path) and "Continue to signing".
- * Markup moved out of `ReviewPage` unchanged (W0); the decisions themselves
- * stay with the page.
+ * The review part of the right-hand panel: the comparison sidebar and, while
+ * critical issues block signing, the reviewer's override ("approve anyway" with
+ * a written reason). Markup moved out of `ReviewPage` unchanged (W0); the
+ * decisions themselves stay with the page.
  */
 export function ReviewSection({
   contract,
@@ -55,13 +56,7 @@ export function ReviewSection({
   correcting,
   isReviewer,
   overrideActive,
-  overrideState: {
-    criticalMissing,
-    criticalInconsistencies,
-    eligible: overrideEligible,
-    unavailable: overrideUnavailable,
-    blockers: overrideBlockers,
-  },
+  overrideState: { criticalMissing, criticalInconsistencies, criticalFmcsa, eligible: overrideEligible },
   notes,
   onNotesChange: setNotes,
   busy,
@@ -87,18 +82,18 @@ export function ReviewSection({
       override={overrideActive}
     />
 
-    {/* Approval is removed (owner decision): no reviewer decision is asked for,
-        and signing does not wait for one. The decision block is kept only in
-        the code history. */}
-    {SHOW_DECISION && isReviewer && contract && contract.review_status === 'pending' && (
+    {/* While critical issues block signing, the reviewer may accept them with a
+        written reason. No other approval is asked for (owner decision), so the
+        ordinary decision buttons stay hidden. */}
+    {isReviewer && contract && contract.review_status === 'pending' && (SHOW_DECISION || overrideEligible) && (
       <div className="review__decision card">
-        <h3>Decision</h3>
+        <h3>{SHOW_DECISION ? 'Decision' : 'Critical issues'}</h3>
 
         {overrideEligible && (
           <div className="alert alert--warn" data-testid="override-eligible">
             <p>
               Approval is blocked by{' '}
-              {describeOverrideCounts(criticalMissing.length, criticalInconsistencies.length)}.
+              {describeOverrideCounts(criticalMissing.length, criticalInconsistencies.length, criticalFmcsa.length)}.
             </p>
             {criticalMissing.length > 0 && (
               <>
@@ -124,6 +119,19 @@ export function ReviewSection({
                     <li key={`${issue.type}:${index}`}>
                       {issue.issue}
                       {pagesSuffix(issue.pages ?? [])}
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+            {criticalFmcsa.length > 0 && (
+              <>
+                <p>FMCSA {criticalFmcsa.length === 1 ? 'violation' : 'violations'}:</p>
+                <ul className="override-list" data-testid="override-fmcsa">
+                  {criticalFmcsa.map((violation, index) => (
+                    <li key={`${violation.rule}:${index}`}>
+                      {violation.issue || violation.rule}
+                      {pagesSuffix([violation.page])}
                     </li>
                   ))}
                 </ul>
@@ -164,28 +172,20 @@ export function ReviewSection({
           <p className="hint hint--error" data-testid="blocked-hint">
             Approval is blocked while critical issues remain. Correct the fields and re-run the
             comparison.
-            {overrideUnavailable && overrideBlockers.length > 0 && (
-              <>
-                {overrideBlockers.map((line) => (
-                  <span key={line} className="blocker-line" data-testid="override-blocker">
-                    <br />
-                    {line}
-                  </span>
-                ))}
-              </>
-            )}
           </p>
         )}
 
         <div className="review__actions">
-          <button
-            type="button"
-            className="button button--ghost"
-            disabled={busy}
-            onClick={() => decide('rejected')}
-          >
-            Reject
-          </button>
+          {SHOW_DECISION && (
+            <button
+              type="button"
+              className="button button--ghost"
+              disabled={busy}
+              onClick={() => decide('rejected')}
+            >
+              Reject
+            </button>
+          )}
           {overrideEligible ? (
             // Replaces the ordinary approve button: two "approve" buttons,
             // one of them permanently disabled, would only invite confusion.
@@ -198,14 +198,16 @@ export function ReviewSection({
               Approve anyway (override)
             </button>
           ) : (
-            <button
-              type="button"
-              className="button button--primary"
-              disabled={busy || !result?.can_sign}
-              onClick={() => decide('approved')}
-            >
-              Approve for signing
-            </button>
+            SHOW_DECISION && (
+              <button
+                type="button"
+                className="button button--primary"
+                disabled={busy || !result?.can_sign}
+                onClick={() => decide('approved')}
+              >
+                Approve for signing
+              </button>
+            )
           )}
         </div>
       </div>

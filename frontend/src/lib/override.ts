@@ -57,9 +57,10 @@ export function describeOverriddenFields(
 const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
 
 /** "2 required fields and 1 inconsistency", leaving out any zero part. */
-export function describeOverrideCounts(missing: number, inconsistencies: number): string {
+export function describeOverrideCounts(missing: number, inconsistencies: number, fmcsa = 0): string {
   const parts: string[] = [];
   if (missing > 0) parts.push(plural(missing, 'required field', 'required fields'));
   if (inconsistencies > 0) parts.push(plural(inconsistencies, 'inconsistency', 'inconsistencies'));
+  if (fmcsa > 0) parts.push(plural(fmcsa, 'FMCSA violation', 'FMCSA violations'));
   return parts.join(' and ');
 }

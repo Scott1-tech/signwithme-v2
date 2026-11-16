@@ -1162,7 +1162,7 @@ def slot_origin_pages(db: Session, contract: Contract) -> set[int]:
 def assert_page_deletions_allowed(db: Session, contract: Contract, base: DocumentVersion, user: User, ops) -> None:
     """§11-7: deleting a page that holds a signature/date slot is for a
     reviewer or an admin only (it re-opens review with a CRITICAL
-    `page_removed_with_slots`, which an override may accept -- never FMCSA)."""
+    `page_removed_with_slots`, which an override may accept)."""
     from app.core.security import ROLE_ADMIN, ROLE_REVIEWER
 
     deleting = {op.page_uid for op in ops if getattr(op, "kind", None) == "page.delete"}

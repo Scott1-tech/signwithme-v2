@@ -252,16 +252,14 @@ function buildFlags(
       text: fmcsa === 1 ? 'FMCSA' : `FMCSA ×${fmcsa}`,
       title:
         `${fmcsa} critical FMCSA ${plural(fmcsa, 'violation', 'violations')}. ` +
-        'This is the one thing a reviewer cannot wave through: an override covers ' +
-        'empty fields and contradicting fields, never an FMCSA violation. The ' +
-        'contract has to be corrected and compared again before it can be signed.',
+        'A reviewer can accept this with an override and a written reason, or the ' +
+        'contract can be corrected and compared again before it is signed.',
     });
   }
-  // The engine's verdict. Same rule the signing page applies: an override
-  // waives a `false` for empty fields and inconsistencies, never for FMCSA
-  // (`lib/gate.ts`, `overrideCovers`). A count of `null` means the
-  // FMCSA side is unknown, so the override is not assumed to cover anything.
-  const overrideCovers = contract.review_override === true && counts.fmcsa === 0;
+  // The engine's verdict. Same rule the signing page applies (`lib/gate.ts`,
+  // `overrideCovers`): a reviewer's override waives the `false` for the critical
+  // issues it accepted, FMCSA included. The server re-checks it at signing.
+  const overrideCovers = contract.review_override === true;
   if (contract.can_sign === false && !overrideCovers) {
     flags.push({
       key: 'cannot-sign',
@@ -271,7 +269,7 @@ function buildFlags(
         'The comparison engine refuses this contract for signing: required fields ' +
         'are still empty, two fields that must agree do not, or an FMCSA rule is ' +
         'broken. Open Review to see which. A reviewer may approve it anyway (an ' +
-        'override) for everything except an FMCSA violation.',
+        'override) with a written reason.',
     });
   }
   const inconsistency = counts.inconsistency ?? 0;
@@ -319,9 +317,9 @@ function buildFlags(
       attention: false,
       text: 'Approved with override',
       title:
-        'A reviewer approved this contract although required fields were empty ' +
-        'and/or fields contradicted each other, and recorded a reason. Open ' +
-        'Review to read it. FMCSA violations are never waived this way.',
+        'A reviewer approved this contract although required fields were empty, ' +
+        'fields contradicted each other or an FMCSA rule was broken, and recorded ' +
+        'a reason. Open Review to read it.',
     });
   }
 

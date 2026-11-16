@@ -17,7 +17,7 @@ from app.models.user import User
 from app.schemas.contract import ContractOut, ReviewSubmission
 from app.services import audit
 from app.services.review_override import (
-    blocking_categories,
+    critical_fmcsa_rules,
     critical_inconsistencies,
     critical_issue_keys,
     critical_missing_field_ids,
@@ -68,20 +68,15 @@ def submit_review(
                 "Contract cannot be approved: unresolved critical issues remain. "
                 "Correct the fields and re-run the comparison first."
             )
-        # A reviewer may knowingly accept empty required fields and critical
-        # cross-field inconsistencies -- with a reason on record -- but never an
-        # FMCSA violation. `override_missing` keeps its name for API
-        # compatibility; since 2026-09-17 it covers inconsistencies as well.
+        # A reviewer may knowingly accept empty required fields, critical
+        # cross-field inconsistencies and critical FMCSA violations -- with a
+        # reason on record. `override_missing` keeps its name for API
+        # compatibility; since 2026-09-17 it covers inconsistencies, and since
+        # 2026 it covers FMCSA violations too.
         reason = (review.notes or "").strip()
         if len(reason) < OVERRIDE_REASON_MIN_CHARS:
             raise ValidationError(
                 f"Override requires a reason (at least {OVERRIDE_REASON_MIN_CHARS} characters)"
-            )
-        blocking = blocking_categories(comparison)
-        if blocking:
-            raise ConflictError(
-                "Contract cannot be approved: FMCSA violations cannot be overridden.",
-                details={"reason": "override_not_allowed", "blocking_categories": blocking},
             )
         override_fields = critical_issue_keys(comparison)
         override_inconsistencies = critical_inconsistencies(comparison)
@@ -107,17 +102,22 @@ def submit_review(
     contract.review_override_fields = list(override_fields) if override_fields is not None else None
 
     if override_fields is not None:
+        details = {
+            "field_ids": critical_missing_field_ids(comparison),
+            # type / issue text / pages only -- never the mismatched values.
+            "inconsistencies": override_inconsistencies,
+            "reason": contract.review_override_reason,
+        }
+        fmcsa_rules = critical_fmcsa_rules(comparison)
+        if fmcsa_rules:
+            # rule / issue text / page only: which FMCSA checks the reviewer accepted.
+            details["fmcsa_rules"] = fmcsa_rules
         audit.log(
             db,
             audit.REVIEW_OVERRIDE,
             contract_id=contract.id,
             actor=user,
-            details={
-                "field_ids": critical_missing_field_ids(comparison),
-                # type / issue text / pages only -- never the mismatched values.
-                "inconsistencies": override_inconsistencies,
-                "reason": contract.review_override_reason,
-            },
+            details=details,
             ip_address=client_ip(request),
             user_agent=request.headers.get("user-agent"),
         )
