@@ -1,4 +1,6 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
+import type { EditorOverlay } from './editorOverlays';
+import type { SignHistory } from './useSignHistory';
 
 interface Props {
   contractId: string;
@@ -6,27 +8,65 @@ interface Props {
   focus: { page: number; nonce: number } | null;
   /** A new version was saved; the contract page reloads to show it. */
   onSaved: () => void;
+  /** Placed signatures and filled dates, drawn over the editor's pages. */
+  overlays?: readonly EditorOverlay[];
+  /** The signing steps the editor's Undo / Redo can take back. */
+  signHistory?: SignHistory;
 }
 
 /**
- * The PDF editor (`/editor/`) inside the review panel: the reviewer fixes the
- * document where the issues are, with no separate step. The editor talks to this
- * page with `postMessage`: it sends `editor:saved` after a save, and this page
- * sends `editor:goto` to move the editor to a page. Messages are accepted from
- * this page's own origin only.
+ * The PDF editor (`/editor/`) inside the contract page: the reviewer fixes the
+ * document where the issues are, and the signer sees the same pages with the
+ * signatures and dates on them. The editor talks to this page with
+ * `postMessage`:
+ *
+ *  * editor → page: `editor:saved` after a save, `editor:ready` once loaded,
+ *    `editor:sign-undo` / `editor:sign-redo` from its Undo / Redo buttons, and
+ *    `editor:sign-redo-clear` when a newer text edit was made;
+ *  * page → editor: `editor:goto` to move to a page, `editor:overlays` with
+ *    what to draw and the state of the signing history.
+ *
+ * Messages are accepted from this page's own origin only.
  */
-export function EmbeddedEditor({ contractId, focus, onSaved }: Props) {
+export function EmbeddedEditor({ contractId, focus, onSaved, overlays, signHistory }: Props) {
   const frameRef = useRef<HTMLIFrameElement>(null);
+  const history = useRef(signHistory);
+  history.current = signHistory;
+
+  const sendOverlays = useCallback(() => {
+    const target = frameRef.current?.contentWindow;
+    if (!target) return;
+    target.postMessage(
+      {
+        type: 'editor:overlays',
+        overlays: overlays ?? [],
+        lastAt: signHistory?.lastAt ?? -1,
+        canRedo: signHistory?.canRedo ?? false,
+        busy: signHistory?.busy ?? false,
+      },
+      window.location.origin,
+    );
+  }, [overlays, signHistory?.lastAt, signHistory?.canRedo, signHistory?.busy]);
 
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
       if (event.origin !== window.location.origin) return;
+      if (event.source !== frameRef.current?.contentWindow) return;
       const data = event.data as { type?: unknown } | null;
-      if (data && data.type === 'editor:saved') onSaved();
+      if (!data) return;
+      if (data.type === 'editor:saved') onSaved();
+      else if (data.type === 'editor:ready') sendOverlays();
+      else if (data.type === 'editor:sign-undo') void history.current?.undo();
+      else if (data.type === 'editor:sign-redo') void history.current?.redo();
+      else if (data.type === 'editor:sign-redo-clear') history.current?.clearRedo();
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [onSaved]);
+  }, [onSaved, sendOverlays]);
+
+  useEffect(() => {
+    sendOverlays();
+  }, [sendOverlays]);
 
   useEffect(() => {
     const target = frameRef.current?.contentWindow;
@@ -41,6 +81,7 @@ export function EmbeddedEditor({ contractId, focus, onSaved }: Props) {
         title="PDF editor"
         src={`/editor/index.html?contract=${encodeURIComponent(contractId)}&embedded=1`}
         style={{ width: '100%', height: '100%', border: 0, background: '#fff' }}
+        onLoad={sendOverlays}
       />
     </div>
   );

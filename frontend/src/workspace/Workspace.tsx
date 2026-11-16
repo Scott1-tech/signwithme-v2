@@ -72,7 +72,8 @@ import { useSelection } from './state/useSelection';
 import { PdfTextLayer } from './text/PdfTextLayer';
 import { useTextSelection, type TextLayerEntry } from './text/useTextSelection';
 import { FloatingToolbar } from './toolbar/FloatingToolbar';
-import type { PropertyGroupId } from './toolbar/PropertiesBar';
+import { buildEditorOverlays } from './editorOverlays';
+import { useSignHistory } from './useSignHistory';
 import { INITIALS_LOCK_NOTE } from './tools/initials';
 import { toolsFor } from './tools/registry';
 import { assetsApi, type AssetOut, type LinkTarget, type Rect as DocRect, type TypedSignatureFont } from '../api/document';
@@ -134,8 +135,6 @@ const resavesStoredSignature = (request: ChooserRequest) => request.purpose === 
 /** The signing panel's toolbar: the Sign tool with Undo / Redo, and none of the
  *  text controls (font, size, style, delete) a selected date or signature would
  *  otherwise bring back after the automatic fill. */
-const SIGN_TOOLBAR_GROUPS: readonly PropertyGroupId[] = ['history'];
-
 /** Group a list by page without losing the order inside a page. */
 function byPage<T>(items: readonly T[], pageOf: (item: T) => number | null | undefined) {
   const map = new Map<number, T[]>();
@@ -453,6 +452,33 @@ export function Workspace() {
       return false;
     }
   });
+
+  // The editor's Undo / Redo also take back placed signatures and chosen dates.
+  const signHistory = useSignHistory({
+    signatures,
+    signaturesLoaded,
+    dateValues,
+    signatureImages,
+    place: contractSignatures.place,
+    remove: contractSignatures.remove,
+    setDateValue: dates.set,
+    onError: setError,
+  });
+  // What the editor draws over its pages: the signatures and dates as they will print.
+  const editorOverlays = useMemo(
+    () =>
+      buildEditorOverlays({
+        signatures,
+        signatureImages,
+        slotById,
+        dateSlots,
+        dateValues,
+        layout,
+        offsetsOf: drag.offsetsOf,
+        scaleOf: resize.scaleOf,
+      }),
+    [signatures, signatureImages, slotById, dateSlots, dateValues, layout, drag.offsetsOf, resize.scaleOf],
+  );
 
   /** "Remove and place again" on a free signature (the editor's wording). */
   const removeFreeSignature = useStableCallback(async (signatureId: string) => {
@@ -1759,11 +1785,22 @@ export function Workspace() {
           )}
         </div>
 
-        {panel === 'sign' && (
+        {contractId ? (
+          <EmbeddedEditor
+            contractId={contractId}
+            focus={editorFocus}
+            overlays={editorOverlays}
+            signHistory={signHistory}
+            onSaved={() => {
+              // The new version, its analysis and any removed signatures show after a reload.
+              window.setTimeout(() => window.location.reload(), 1200);
+            }}
+          />
+        ) : (
+        <>
         <FloatingToolbar
           stageRef={stageRef}
-          tools={visibleTools.filter((tool) => tool.id === 'signature')}
-          onlyGroups={SIGN_TOOLBAR_GROUPS}
+          tools={visibleTools}
           menuExtras={menuExtras}
           toolId={toolId}
           onTool={tools.setTool}
@@ -1806,17 +1843,6 @@ export function Workspace() {
             onDuplicate: tools.duplicateSelected,
           }}
         />
-        )}
-        {panel !== 'sign' && contractId ? (
-          <EmbeddedEditor
-            contractId={contractId}
-            focus={editorFocus}
-            onSaved={() => {
-              // The new version, its analysis and any removed signatures show after a reload.
-              window.setTimeout(() => window.location.reload(), 1200);
-            }}
-          />
-        ) : (
         <PdfViewer
           viewer={viewer}
           renderPageOverlay={renderPageOverlay}
@@ -1827,6 +1853,7 @@ export function Workspace() {
           floating={<EditorNote note={note} onDismiss={dismissNote} />}
           pageTools={pageTools}
         />
+        </>
         )}
         {forms.panel /* F2b: form field properties / tab order / detect */}
         {/* The Image tool's file dialog (W4): opened by a click on the page. */}

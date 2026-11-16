@@ -18,6 +18,9 @@
         this.pendingSignature = null;
         this.pendingImage = null;
         this.undoStack = [];
+        // What Undo took back, newest last; `{ type: 'sign' }` is a signing step
+        // undone on the contract page (sign-overlays.js). A new edit clears it.
+        this.redoStack = [];
 
         this.measureCtx = document.createElement('canvas').getContext('2d');
 
@@ -535,6 +538,8 @@
           }
           this._restorePage(state, carried);
         }
+        // The signatures and dates placed in the app, at this page's new size.
+        if (window.SignOverlays) window.SignOverlays.draw(state);
       }
 
       async _extractAndBuildLiveDomNodes(state, capturedGlyphColors) {
@@ -871,12 +876,13 @@
         box.addEventListener('mousedown', (e) => {
           e.preventDefault();
           e.stopPropagation();
+          const before = box.textContent;
           if (this.activeTool === 'cross') {
             box.textContent = box.textContent === '✕' ? '' : '✕';
           } else {
             box.textContent = box.textContent ? '' : '✓';
           }
-          this.undoStack.push({ type: 'checkbox-toggle', node: box });
+          this._pushUndo({ type: 'checkbox-toggle', node: box, before });
         });
 
         state.domLayer.appendChild(box);
@@ -1070,7 +1076,7 @@
       _recordModification(node) {
         if (!node.classList.contains('modified')) {
           node.classList.add('modified');
-          this.undoStack.push({
+          this._pushUndo({
             type: 'edit',
             node,
             origText: node.dataset.origText,
@@ -1167,22 +1173,86 @@
         });
       }
 
+      /** Record one step for Undo. A new step means nothing undone can be redone. */
+      _pushUndo(entry) {
+        entry.at = Date.now();
+        this.undoStack.push(entry);
+        this.redoStack = [];
+        if (window.SignOverlays) window.SignOverlays.localChanged();
+      }
+
+      /**
+       * Take back the last change: this editor's own last edit, or the last
+       * signature / date placed on the contract page, whichever is newer.
+       */
       undo() {
-        const last = this.undoStack.pop();
+        const last = this.undoStack[this.undoStack.length - 1];
+        const localAt = last ? (last.at || 0) : -1;
+        const signing = window.SignOverlays ? window.SignOverlays.undoIfNewer(localAt) : false;
+        if (signing === 'busy') return;
+        if (signing === 'done') {
+          this.redoStack.push({ type: 'sign' });
+          return;
+        }
         if (!last) return;
-        if (last.type === 'spawn') last.node.remove();
-        if (last.type === 'checkbox-toggle') last.node.textContent = '';
+        this.undoStack.pop();
+        if (last.type === 'spawn') {
+          last.parent = last.node.parentNode;
+          last.next = last.node.nextSibling;
+          last.node.remove();
+        }
+        if (last.type === 'checkbox-toggle') {
+          last.after = last.node.textContent;
+          last.node.textContent = last.before || '';
+        }
         if (last.type === 'edit') {
           if (!last.node.isConnected && this.pages[0]) {
             this.pages[0].domLayer.appendChild(last.node);
           }
+          last.redo = {
+            text: last.node.textContent,
+            left: last.node.style.left,
+            top: last.node.style.top,
+            dx: last.node.dataset.dx,
+            dy: last.node.dataset.dy,
+          };
           last.node.textContent = last.origText;
           last.node.style.left = `${last.initLeft}px`;
           last.node.style.top = `${last.initTop}px`;
           last.node.dataset.dx = '0';
           last.node.dataset.dy = '0';
+          // The next change to this line is a new step of its own.
+          last.node.classList.remove('modified');
         }
+        this.redoStack.push(last);
         this.deselectAll();
+        if (window.SignOverlays) window.SignOverlays.updateButtons();
+      }
+
+      /** Put back what the last Undo took back. */
+      redo() {
+        const next = this.redoStack.pop();
+        if (!next) return;
+        if (next.type === 'sign') {
+          if (!window.SignOverlays || !window.SignOverlays.redo()) this.redoStack.push(next);
+          return;
+        }
+        if (next.type === 'spawn' && next.parent) {
+          next.parent.insertBefore(next.node, next.next && next.next.parentNode === next.parent ? next.next : null);
+        }
+        if (next.type === 'checkbox-toggle') next.node.textContent = next.after || '';
+        if (next.type === 'edit' && next.redo) {
+          next.node.textContent = next.redo.text;
+          next.node.style.left = next.redo.left;
+          next.node.style.top = next.redo.top;
+          next.node.dataset.dx = next.redo.dx || '0';
+          next.node.dataset.dy = next.redo.dy || '0';
+          next.node.classList.add('modified');
+        }
+        next.at = Date.now();
+        this.undoStack.push(next);
+        this.deselectAll();
+        if (window.SignOverlays) window.SignOverlays.updateButtons();
       }
 
       _attachStageEvents(state, bar) {
@@ -1297,7 +1367,7 @@
                 10.5
               );
               this._register(widget, state, 'added', '', x, startY - lineH + 2, w, lineH, widget.querySelector('.line-text-input'));
-              this.undoStack.push({ type: 'spawn', node: widget });
+              this._pushUndo({ type: 'spawn', node: widget });
               const inp = widget.querySelector('.line-text-input');
               if (inp) inp.focus();
             };
@@ -1423,7 +1493,7 @@
 
         state.domLayer.appendChild(box);
         this._bindBoxDragAnd8WayResize(box);
-        this.undoStack.push({ type: 'spawn', node: box });
+        this._pushUndo({ type: 'spawn', node: box });
         return box;
       }
 
@@ -1500,7 +1570,7 @@
 
         state.domLayer.appendChild(el);
         this._makeAddedObjDraggable(el);
-        this.undoStack.push({ type: 'spawn', node: el });
+        this._pushUndo({ type: 'spawn', node: el });
         return el;
       }
 
@@ -1892,6 +1962,7 @@
       const engine = new SejdaPDFEngine({
         container: '#sejda-mount-root'
       });
+      window.sejdaEngine = engine; // sign-overlays.js draws on its pages
 
       // Opened from a contract (editor/?contract=<id>): that contract's PDF.
       // Opened on its own: the built-in sample document, as before.
@@ -1924,6 +1995,8 @@
         statusLine.textContent = error instanceof Error ? error.message : 'PDF yuklanmadi.';
       }
       buildPageList(engine).catch(() => {});
+      // Ask the contract page for its signatures and dates, now that the pages exist.
+      if (window.SignOverlays) window.SignOverlays.ready();
 
       document.querySelectorAll('#main-toolbar .s-tool[data-tool]').forEach(btn => {
         btn.onclick = () => {
@@ -1938,6 +2011,7 @@
       });
 
       document.getElementById('btn-undo').onclick = () => engine.undo();
+      document.getElementById('btn-redo').onclick = () => engine.redo();
 
       document.getElementById('binary-close').onclick = () => {
         document.getElementById('binary-modal').classList.remove('open');
