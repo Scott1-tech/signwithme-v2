@@ -110,8 +110,8 @@ def _assert_signable(contract: Contract) -> dict:
         raise ConflictError("Contract is already finalised")
     if not comparison:
         raise ConflictError("Contract has not been compared against its template")
-    if contract.review_status != "approved":
-        raise ConflictError("Contract must be approved by a reviewer before signing")
+    # Approval by a reviewer is no longer required (owner decision). The
+    # critical-issue checks below still apply.
     if not comparison.get("can_sign", False) and contract.review_override:
         # Subset gate: the override stands only while every current critical
         # issue was accepted by the reviewer (FMCSA never is).

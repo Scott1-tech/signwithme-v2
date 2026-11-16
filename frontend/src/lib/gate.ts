@@ -35,12 +35,10 @@ export function computeSigningGate(
   const criticalFmcsaCount =
     result?.fmcsa_violations.filter((violation) => violation.severity === 'critical').length ?? 0;
   const overrideCovers = override.active && criticalFmcsaCount === 0;
-  const blocked =
-    contract?.review_status !== 'approved' || (result?.can_sign === false && !overrideCovers);
-  // Why it is blocked, so the page can say so and point somewhere instead of
-  // swallowing every click in silence. "Not yet approved" and "critical issues
-  // outstanding" are different problems with different next steps.
-  const notApproved = Boolean(contract) && contract?.review_status !== 'approved';
+  // Approval is no longer required (owner decision). Only open critical issues
+  // (FMCSA and required fields) still block signing.
+  const blocked = result?.can_sign === false && !overrideCovers;
+  const notApproved = false;
   const criticalIssues: CriticalIssue[] = result
     ? [...result.missing_required, ...result.inconsistencies, ...result.fmcsa_violations].filter(
         (issue) => issue.severity === 'critical',

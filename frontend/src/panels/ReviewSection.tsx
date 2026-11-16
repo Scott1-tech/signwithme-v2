@@ -83,7 +83,10 @@ export function ReviewSection({
       override={overrideActive}
     />
 
-    {isReviewer && contract && contract.review_status === 'pending' && (
+    {/* Approval is removed (owner decision): no reviewer decision is asked for,
+        and signing does not wait for one. The decision block is kept only in
+        the code history. */}
+    {false && isReviewer && contract && contract.review_status === 'pending' && (
       <div className="review__decision card">
         <h3>Decision</h3>
 
@@ -204,7 +207,7 @@ export function ReviewSection({
       </div>
     )}
 
-    {contract && contract.review_status === 'approved' && contract.status !== 'completed' && (
+    {false && contract && contract.review_status === 'approved' && contract.status !== 'completed' && (
       <div className="card">
         <p>Approved for signing.</p>
         <OverrideBadge contract={contract} result={result} />
