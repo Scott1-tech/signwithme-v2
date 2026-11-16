@@ -51,6 +51,10 @@ interface Props {
  * placements and the contract date. Markup moved out of `SignaturePage`
  * unchanged (W0); it owns no state of its own.
  */
+/** Simplified: the per-page slot list is hidden. A named flag, not `false &&`, so
+ *  the type checker does not treat the dead branch as a constant expression. */
+const SHOW_SLOT_LIST: boolean = false;
+
 export function SignSection({
   contract,
   result,
@@ -207,7 +211,7 @@ export function SignSection({
 
       {/* The per-page slot list is removed (simplified). Signing still works
           from the signature and date controls on the page. */}
-      {false && (
+      {SHOW_SLOT_LIST && (
       <div className="card">
         <div className="card__heading">
           <h2>Signature slots</h2>

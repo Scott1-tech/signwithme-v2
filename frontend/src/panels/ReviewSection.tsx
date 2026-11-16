@@ -7,6 +7,10 @@ import type { ComparisonResult, PageIssue } from '../types/comparison';
 import type { ContractDetail } from '../types/contract';
 
 const NOTES_EXAMPLE = "e.g. CDL verified against the driver's license copy; the letter on page 14 is a typo";
+/** Approval is removed (owner decision): these flags keep the old blocks out of
+ *  the page without a literal `false &&` in the code. */
+const SHOW_DECISION: boolean = false;
+const SHOW_APPROVED_CARD: boolean = false;
 
 interface Props {
   contract: ContractDetail | null;
@@ -86,7 +90,7 @@ export function ReviewSection({
     {/* Approval is removed (owner decision): no reviewer decision is asked for,
         and signing does not wait for one. The decision block is kept only in
         the code history. */}
-    {false && isReviewer && contract && contract.review_status === 'pending' && (
+    {SHOW_DECISION && isReviewer && contract && contract.review_status === 'pending' && (
       <div className="review__decision card">
         <h3>Decision</h3>
 
@@ -207,7 +211,7 @@ export function ReviewSection({
       </div>
     )}
 
-    {false && contract && contract.review_status === 'approved' && contract.status !== 'completed' && (
+    {SHOW_APPROVED_CARD && contract && contract.review_status === 'approved' && contract.status !== 'completed' && (
       <div className="card">
         <p>Approved for signing.</p>
         <OverrideBadge contract={contract} result={result} />

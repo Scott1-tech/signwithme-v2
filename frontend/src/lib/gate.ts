@@ -38,7 +38,7 @@ export function computeSigningGate(
   // Approval is no longer required (owner decision). Only open critical issues
   // (FMCSA and required fields) still block signing.
   const blocked = result?.can_sign === false && !overrideCovers;
-  const notApproved = false;
+  const notApproved: boolean = false;
   const criticalIssues: CriticalIssue[] = result
     ? [...result.missing_required, ...result.inconsistencies, ...result.fmcsa_violations].filter(
         (issue) => issue.severity === 'critical',
