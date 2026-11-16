@@ -132,3 +132,34 @@ window.addEventListener('message', (event) => {
   const bar = document.querySelectorAll('.page-bar')[Number(event.data.page) - 1];
   if (bar) bar.scrollIntoView({ block: 'start' });
 });
+
+/*
+ * The page list on the left: one small picture per page, drawn from pdf.js.
+ * A click moves the editor to that page.
+ */
+async function buildPageList(engine) {
+  const list = document.getElementById('page-list');
+  if (!list || !engine.pdfDoc) return;
+  list.innerHTML = '';
+  for (let pageNo = 1; pageNo <= engine.pdfDoc.numPages; pageNo++) {
+    const page = await engine.pdfDoc.getPage(pageNo);
+    const viewport = page.getViewport({ scale: 0.2 });
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.ceil(viewport.width);
+    canvas.height = Math.ceil(viewport.height);
+    await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.title = `Sahifa ${pageNo}`;
+    button.append(canvas);
+    const label = document.createElement('span');
+    label.textContent = String(pageNo);
+    button.append(label);
+    button.addEventListener('click', () => {
+      const bar = document.querySelectorAll('.page-bar')[pageNo - 1];
+      if (bar) bar.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      list.querySelectorAll('button').forEach((item) => item.classList.toggle('active', item === button));
+    });
+    list.append(button);
+  }
+}

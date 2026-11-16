@@ -486,6 +486,22 @@
     }
     .btn-apply-sejda:hover { background: var(--sejda-green-hover); }
 
+    /* The page list on the left (one picture per page) and the page column beside it. */
+    .editor-body { display: flex; align-items: flex-start; gap: 12px; padding: 0 12px 16px; }
+    .editor-body > main { flex: 1 1 auto; min-width: 0; }
+    .page-list {
+      flex: 0 0 150px; width: 150px; position: sticky; top: 8px;
+      max-height: calc(100vh - 150px); overflow-y: auto;
+      background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 8px; padding: 8px;
+    }
+    .page-list button {
+      display: block; width: 100%; margin: 0 0 10px; padding: 4px;
+      border: 2px solid transparent; border-radius: 6px; background: #fff; cursor: pointer;
+    }
+    .page-list button.active { border-color: #2563eb; }
+    .page-list canvas { display: block; width: 100%; height: auto; }
+    .page-list span { display: block; margin-top: 2px; font: 12px system-ui, sans-serif; color: #334155; text-align: center; }
+
     /* Modal Oynalari */
     .modal-bg {
       position: fixed;
@@ -557,16 +573,9 @@
         <a class="action-chip" id="back-link" href="/" style="text-decoration:none;color:inherit;">
           <i class="fa-solid fa-arrow-left"></i> <span>Shartnomaga qaytish</span>
         </a>
-        <button class="action-chip" id="btn-view-binary" title="PDF faylning haqiqiy ichki binar /Contents operatorlarini ko'rish">
-          <i class="fa-solid fa-code"></i> <span>Binary Stream Ko'rish</span>
+        <button class="btn-apply-sejda" id="btn-save-contract" type="button" style="padding:7px 14px;font-size:13px;">
+          Shartnomaga saqlash <i class="fa-solid fa-floppy-disk" style="font-size:13px;"></i>
         </button>
-        <button class="action-chip" id="btn-inspect-canvas" title="Orqa fondagi Canvasda matn va chiziqlar yo'qligini tekshirish">
-          <i class="fa-regular fa-eye"></i> <span>Canvasni tekshirish</span>
-        </button>
-        <label class="action-chip">
-          <i class="fa-regular fa-folder-open"></i> PDF Yuklash
-          <input type="file" id="pdf-upload" accept="application/pdf" hidden />
-        </label>
       </div>
     </div>
 
@@ -615,16 +624,11 @@
   <input type="file" id="img-upload" accept="image/png,image/jpeg" hidden />
 
   <p id="editor-status" role="status" style="margin:8px 16px 0;font:13px/1.4 system-ui,sans-serif;color:#334155;"></p>
-  <main id="sejda-mount-root"></main>
-
-  <div class="apply-container" style="display:flex;gap:8px;align-items:center;">
-    <button class="btn-apply-sejda" id="btn-save-contract" type="button">
-      Shartnomaga saqlash <i class="fa-solid fa-floppy-disk" style="font-size:13px;"></i>
-    </button>
-    <button class="btn-apply-sejda" id="btn-apply" type="button">
-      PDF yuklab olish <i class="fa-solid fa-download" style="font-size:13px;"></i>
-    </button>
+  <div class="editor-body">
+    <aside class="page-list" id="page-list" aria-label="Pages"></aside>
+    <main id="sejda-mount-root"></main>
   </div>
+
 
   <!-- Imzo Modal Oynasi -->
   <div class="modal-bg" id="sig-modal">

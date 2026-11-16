@@ -551,10 +551,17 @@
           const totalWidth = item.width * scale;
 
           const st = styles[item.fontName] || {};
-          const fam = (st.fontFamily || item.fontName || '').toLowerCase();
-          const isBold = fam.includes('bold') || (item.fontName || '').toLowerCase().includes('bold');
-          const isItalic = fam.includes('italic') || fam.includes('oblique');
-          const fallbackFont = fam.includes('sans') || fam.includes('helvetica')
+          // pdf.js gives only a generic family here ("sans-serif"). The font's own name
+          // (e.g. "Arial-BoldItalicMT") tells the real family, bold and italic.
+          const loadedFont = state.pdfPage.commonObjs && state.pdfPage.commonObjs.has(item.fontName)
+            ? state.pdfPage.commonObjs.get(item.fontName)
+            : null;
+          const realFontName = loadedFont && loadedFont.name ? String(loadedFont.name).toLowerCase() : '';
+          const fam = `${st.fontFamily || ''} ${realFontName}`.toLowerCase();
+          const isBold = /bold|black|heavy|semibold|demi/.test(fam);
+          const isItalic = /italic|oblique/.test(fam);
+          const isSans = /sans|helvetica|arial|calibri|verdana|tahoma|gothic|segoe|carlito|arimo/.test(fam);
+          const fallbackFont = isSans
             ? 'Helvetica, Arial, sans-serif'
             : 'Times New Roman, Times, serif';
 
@@ -1389,9 +1396,16 @@
         const fTimesBI = await pdfDoc.embedFont(StandardFonts.TimesRomanBoldItalic);
         const fHelv = await pdfDoc.embedFont(StandardFonts.Helvetica);
         const fHelvB = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+        const fHelvI = await pdfDoc.embedFont(StandardFonts.HelveticaOblique);
+        const fHelvBI = await pdfDoc.embedFont(StandardFonts.HelveticaBoldOblique);
 
         const pickFont = (fam, b, i) => {
-          if ((fam || '').toLowerCase().includes('helvetica')) return b ? fHelvB : fHelv;
+          if ((fam || '').toLowerCase().includes('helvetica')) {
+            if (b && i) return fHelvBI;
+            if (b) return fHelvB;
+            if (i) return fHelvI;
+            return fHelv;
+          }
           if (b && i) return fTimesBI;
           if (b) return fTimesB;
           if (i) return fTimesI;
@@ -1705,6 +1719,7 @@
       } catch (error) {
         statusLine.textContent = error instanceof Error ? error.message : 'PDF yuklanmadi.';
       }
+      buildPageList(engine).catch(() => {});
 
       document.querySelectorAll('#main-toolbar .s-tool[data-tool]').forEach(btn => {
         btn.onclick = () => {
@@ -1720,30 +1735,8 @@
 
       document.getElementById('btn-undo').onclick = () => engine.undo();
 
-      // Canvasni tekshirish: Bosilganda orqa fondagi Canvasda birorta ham matn yoki chiziq qolmaganini ko'rsatadi!
-      const inspectBtn = document.getElementById('btn-inspect-canvas');
-      inspectBtn.onclick = () => {
-        document.body.classList.toggle('inspect-raw-canvas');
-        inspectBtn.classList.toggle('active-chip');
-      };
-
-      // Binary Stream Inspector: PDF faylning haqiqiy binar /Contents oqimini ko'rsatadi
-      document.getElementById('btn-view-binary').onclick = async () => {
-        const modal = document.getElementById('binary-modal');
-        const outBox = document.getElementById('binary-stream-output');
-        modal.classList.add('open');
-        const doc = await PDFLib.PDFDocument.load(engine.pdfBytes);
-        const rawStr = SejdaBinaryStreamSurgeon.extractRawPageStreamString(doc, doc.getPages()[0]);
-        outBox.textContent = rawStr || 'Stream bo\'sh';
-      };
-
       document.getElementById('binary-close').onclick = () => {
         document.getElementById('binary-modal').classList.remove('open');
-      };
-
-      document.getElementById('pdf-upload').onchange = async (e) => {
-        const file = e.target.files[0];
-        if (file) await engine.loadPDF(await file.arrayBuffer());
       };
 
       document.getElementById('img-upload').onchange = (e) => {
@@ -1780,31 +1773,11 @@
         document.getElementById('sig-modal').classList.remove('open');
       };
 
-      document.getElementById('btn-apply').onclick = async () => {
-        // Nothing loaded yet (the contract's PDF is still loading, or failed to load):
-        // say so, rather than failing inside the PDF library.
-        if (!engine.pdfBytes) {
-          statusLine.textContent = statusLine.textContent || 'PDF hali yuklanmadi.';
-          return;
-        }
-        const btn = document.getElementById('btn-apply');
-        btn.disabled = true;
-        btn.innerHTML = `Binary kompilyatsiya... <i class="fa-solid fa-spinner fa-spin"></i>`;
-        try {
-          await engine.exportEditedPDF(outputName);
-        } finally {
-          btn.disabled = false;
-          btn.innerHTML = `PDF yuklab olish <i class="fa-solid fa-download" style="font-size:13px;"></i>`;
-        }
-      };
-
       // «Shartnomaga saqlash»: the edited file becomes the contract's next version.
       const saveButton = document.getElementById('btn-save-contract');
-      const downloadButton = document.getElementById('btn-apply');
       saveButton.style.display = contractId ? '' : 'none';
       const setBusy = (busy, text) => {
         saveButton.disabled = busy;
-        downloadButton.disabled = busy;
         if (text) statusLine.textContent = text;
       };
       saveButton.onclick = async () => {
@@ -1835,6 +1808,7 @@
           baseVersionNo = saved.version.version_no;
           statusLine.textContent = describeSavedVersion(saved);
           notifyContractPage('editor:saved');
+          buildPageList(engine).catch(() => {});
         } catch (error) {
           statusLine.textContent = describeSaveFailure(error);
         } finally {
