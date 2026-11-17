@@ -319,10 +319,50 @@
         this.registry = new Map();
         this.overlaySeq = 0;
         this.structureChanged = false;
+        this.pendingMarkup = new Map();
+
+        // A page is drawn when it comes near the screen, not all at once: a
+        // 40-page contract opens as fast as a 2-page one and holds bitmaps
+        // only for the pages that were looked at.
+        if (this.lazyObserver) this.lazyObserver.disconnect();
+        this.lazyObserver = new IntersectionObserver((entries) => {
+          entries.forEach((entry) => {
+            if (!entry.isIntersecting) return;
+            const state = this.pages.find((page) => page.stage === entry.target);
+            if (state) this._ensureRendered(state);
+          });
+        }, { rootMargin: '900px 0px' });
 
         for (let i = 1; i <= this.pdfDoc.numPages; i++) {
           await this._buildPage(i);
         }
+        // The first pages are on screen at once.
+        await Promise.all(this.pages.slice(0, 2).map((state) => this._ensureRendered(state)));
+      }
+
+      /** Draws a page the first time it is needed, then shows its saved marks. */
+      async _ensureRendered(state) {
+        if (state.rendered) return;
+        if (state.rendering) return state.rendering;
+        state.rendering = (async () => {
+          await this._renderStage(state, true);
+          const pending = this.pendingMarkup && this.pendingMarkup.get(state.pageIndex);
+          if (pending) {
+            this.pendingMarkup.delete(state.pageIndex);
+            this.restorePageMarkup(state, pending);
+          }
+        })();
+        try {
+          await state.rendering;
+        } finally {
+          state.rendering = null;
+        }
+      }
+
+      /** Saved marks for a page: shown now if it is drawn, else when it is. */
+      showPageMarkup(state, elements) {
+        if (state.rendered) this.restorePageMarkup(state, elements);
+        else if (elements && elements.length) this.pendingMarkup.set(state.pageIndex, elements);
       }
 
       /**
@@ -519,7 +559,8 @@
           pageNum,
           pageIndex: pageNum - 1,
           scale: this.defaultScale,
-          rotation: 0,
+          // The page's own /Rotate: it is shown as the file shows it.
+          rotation: ((pdfPage.rotate || 0) % 360 + 360) % 360,
           pdfPage
         };
         this.pages.push(state);
@@ -566,11 +607,19 @@
         state.patchLayer = patchLayer;
         this._watchReveal(state);
 
-        await this._renderStage(state, true);
+        // Sized now, drawn when it comes near the screen (`_ensureRendered`).
+        const viewport = pdfPage.getViewport({ scale: state.scale, rotation: state.rotation });
+        state.viewport = viewport;
+        stage.style.width = `${viewport.width}px`;
+        stage.style.height = `${viewport.height}px`;
+        stage.classList.add('page-not-drawn');
         this._attachStageEvents(state, bar);
+        this.lazyObserver.observe(stage);
       }
 
       async _renderStage(state, rebuildDom = false) {
+        state.rendered = true;
+        state.stage.classList.remove('page-not-drawn');
         const viewport = state.pdfPage.getViewport({ scale: state.scale, rotation: state.rotation });
         state.viewport = viewport;
 
@@ -1233,6 +1282,24 @@
         }
       }
 
+      /**
+       * Page changes on a contract, saved with the text changes in one draft:
+       * a turn (absolute /Rotate), a deleted page, a blank page inserted after one.
+       */
+      pagePlan() {
+        const plan = [];
+        this.pages.forEach((state) => {
+          if (state.deleted) {
+            plan.push({ type: 'delete', pageIndex: state.pageIndex });
+            return;
+          }
+          const own = (((state.pdfPage.rotate || 0) % 360) + 360) % 360;
+          if (state.rotation !== own) plan.push({ type: 'rotate', pageIndex: state.pageIndex, rotation: state.rotation });
+          for (let n = 0; n < (state.insertsAfter || 0); n += 1) plan.push({ type: 'insert', afterIndex: state.pageIndex });
+        });
+        return plan;
+      }
+
       _hasPendingChanges() {
         const plan = this.collectEdits();
         return plan.edits.length > 0 || plan.unsupported.length > 0;
@@ -1291,15 +1358,19 @@
           }
         }
         for (const state of this.pages) {
-          if (state.rotation) {
+          const turned = state.rotation !== (((state.pdfPage.rotate || 0) % 360) + 360) % 360;
+          if (turned && !this.contractMode) {
             unsupported.push(`${place(state)}: sahifa burilgan — burish hozircha saqlanmaydi (0° ga qaytaring).`);
+          }
+          if (turned && this.collectPageMarkup(state).length) {
+            unsupported.push(`${place(state)}: burilgan sahifaga qo‘shilgan matn va belgilar hozircha saqlanmaydi — avval sahifani saqlang, so‘ng qo‘shing.`);
           }
           // Added text, ✓ / ✕ and whiteout are saved as markup; other added objects are not yet.
           if (state.domLayer.querySelector('.added-obj:not([data-type="added-text"]):not([data-type="check"]):not([data-type="cross"]), .sejda-box-item:not([data-type="whiteout"])')) {
             unsupported.push(`${place(state)}: qo‘shilgan matn yoki shakl hozircha saqlanmaydi.`);
           }
         }
-        if (this.structureChanged) {
+        if (this.structureChanged && !this.contractMode) {
           unsupported.push('Sahifalar qo‘shilgan yoki o‘chirilgan — bu hozircha saqlanmaydi.');
         }
         return { edits, unsupported: [...new Set(unsupported)] };
@@ -1533,6 +1604,22 @@
             state.rotation = (state.rotation + 270) % 360;
             await this._renderStage(state, true);
             this.restorePageMarkup(state, carried);
+          } else if (act === 'del' && this.contractMode) {
+            if (this.pages.filter((page) => !page.deleted).length <= 1) return alert('Yagona sahifani o‘chirib bo‘lmaydi.');
+            if (!confirm(`Sahifa ${state.pageIndex + 1} o‘chirilsinmi? «Shartnomaga saqlash» bosilganda o‘chadi.`)) return;
+            state.deleted = true;
+            bar.classList.add('page-pending-delete');
+            state.stage.classList.add('page-pending-delete');
+            bar.querySelector('.page-num-badge').title = 'Saqlanganda o‘chiriladi';
+            this.structureChanged = true;
+            if (window.SignOverlays) window.SignOverlays.updateButtons();
+          } else if (act === 'ins' && this.contractMode) {
+            state.insertsAfter = (state.insertsAfter || 0) + 1;
+            const note = document.createElement('div');
+            note.className = 'page-pending-insert';
+            note.textContent = 'Yangi bo‘sh sahifa — «Shartnomaga saqlash» bosilganda qo‘shiladi';
+            state.stage.after(note);
+            this.structureChanged = true;
           } else if (act === 'del') {
             if (this._hasPendingChanges()) return alert('Avval matndagi o‘zgarishlarni saqlang yoki sahifani yangilang, so‘ng sahifalarni o‘zgartiring.');
             const doc = await PDFDocument.load(this.pdfBytes);
@@ -1886,6 +1973,8 @@
 
       /** Every mark this page adds, as markup elements (no page: the caller knows it). */
       collectPageMarkup(state) {
+        // Not drawn yet: its saved marks are still exactly as loaded.
+        if (!state.rendered) return [...((this.pendingMarkup && this.pendingMarkup.get(state.pageIndex)) || [])];
         const B = window.MarkupBridge;
         const out = [];
         const clean = (value) => (value || '').replace(/\u00A0/g, ' ').replace(/\s*\n\s*/g, ' ').trim();
@@ -2471,7 +2560,7 @@
           ]);
           const { byPage, taken } = window.MarkupBridge.splitForPages(saved.elements, uidByIndex);
           markupTaken = taken;
-          engine.pages.forEach((state) => engine.restorePageMarkup(state, byPage.get(state.pageIndex) || []));
+          engine.pages.forEach((state) => engine.showPageMarkup(state, byPage.get(state.pageIndex) || []));
         } catch (error) {
           statusLine.textContent = 'Qo‘shilgan matn va belgilar yuklanmadi.';
         }
@@ -2508,15 +2597,7 @@
           btn.setAttribute('aria-disabled', 'true');
           btn.title = NOT_SAVED;
         });
-        const lockPageTools = () => {
-          document.querySelectorAll('.page-bar [data-act="del"], .page-bar [data-act="rccw"], .page-bar [data-act="rcw"], .page-bar [data-act="ins"]').forEach((btn) => {
-            btn.classList.add('not-saved');
-            btn.disabled = true;
-            btn.title = NOT_SAVED;
-          });
-        };
-        lockPageTools();
-        new MutationObserver(lockPageTools).observe(document.querySelector('#sejda-mount-root') || document.body, { childList: true });
+        engine.contractMode = true;
       }
 
       document.querySelectorAll('#main-toolbar .s-tool[data-tool]').forEach(btn => {
@@ -2610,19 +2691,23 @@
         }
         const marks = engine.collectMarkup();
         const marksChanged = window.MarkupBridge.signature(marks) !== markupShown;
-        if (!plan.edits.length && !marksChanged) {
+        const pages = engine.pagePlan();
+        if (!plan.edits.length && !marksChanged && !pages.length) {
           statusLine.textContent = 'O‘zgarish yo‘q.';
           return;
         }
         setBusy(true, 'Saqlanmoqda…');
         try {
-          if (!plan.edits.length) {
+          // Page uids of the version being edited: marks name their page by it (kept across versions).
+          const baseUids = await pageUidsOf(contractId, baseVersionNo);
+          if (!plan.edits.length && !pages.length) {
             // Only added text / marks: they are the contract's markup, the PDF itself stays as it is.
-            await saveContractMarkup(contractId, baseVersionNo, marks, markupTaken);
+            await saveContractMarkup(contractId, baseUids, marks, markupTaken);
             await showSaved('Saqlandi: qo‘shilgan matn va belgilar.');
             return;
           }
-          const result = await saveEditsToContract(contractId, baseVersionNo, plan.edits, {
+          const result = await saveEditsToContract(contractId, baseVersionNo, plan.edits.filter((edit) => !(engine.pages[edit.pageIndex] || {}).deleted), {
+            pages,
             confirmSignatures: (count) => window.confirm(
               `Bu shartnomada ${count} ta imzo bor. Hujjat o‘zgargani uchun ular o‘chiriladi va shartnoma qayta imzolanadi. Davom etamizmi?`,
             ),
@@ -2643,7 +2728,7 @@
           let note = describeSavedVersion(result.version);
           if (marksChanged) {
             try {
-              await saveContractMarkup(contractId, baseVersionNo, marks, markupTaken);
+              await saveContractMarkup(contractId, baseUids, marks.filter((mark) => !(engine.pages[mark.pageIndex] || {}).deleted), markupTaken);
             } catch (error) {
               note += ` Qo‘shilgan matn va belgilar saqlanmadi: ${describeSaveFailure(error)}`;
             }

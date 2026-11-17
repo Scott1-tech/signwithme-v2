@@ -184,6 +184,29 @@
       padding: 16px;
     }
 
+    /* Page changes waiting for «Shartnomaga saqlash» (engine.js `pagePlan`). */
+    .pdf-stage.page-pending-delete {
+      opacity: 0.35;
+      outline: 3px dashed #dc2626;
+      pointer-events: none;
+    }
+    .page-bar.page-pending-delete .page-num-badge { color: #dc2626; text-decoration: line-through; }
+    .page-pending-insert {
+      width: 60%;
+      margin: 10px auto 24px;
+      padding: 40px 16px;
+      text-align: center;
+      border: 2px dashed #94a3b8;
+      border-radius: 6px;
+      color: #475569;
+      background: #ffffff;
+      font: 13px/1.4 system-ui, sans-serif;
+    }
+
+    .pdf-stage.page-not-drawn {
+      background: #ffffff;
+    }
+
     .page-bar {
       display: flex;
       align-items: center;

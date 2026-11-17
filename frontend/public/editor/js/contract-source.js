@@ -102,11 +102,8 @@ async function loadContractMarkup(contractId) {
  * `mine` is [{ pageIndex, element }]; `takenIds` the server elements the
  * editor showed (they are replaced); every other element is kept as it is.
  */
-async function saveContractMarkup(contractId, versionNo, mine, takenIds) {
-  const [uidByIndex, current] = await Promise.all([
-    pageUidsOf(contractId, versionNo),
-    loadContractMarkup(contractId),
-  ]);
+async function saveContractMarkup(contractId, uidByIndex, mine, takenIds) {
+  const current = await loadContractMarkup(contractId);
   const elements = window.MarkupBridge.mergeForSave(current.elements, takenIds, mine, uidByIndex);
   return editorJson(`/api/contracts/${contractId}/document/markup`, 'PUT', {
     revision: current.revision,
@@ -182,16 +179,32 @@ async function buildPageList(engine) {
   const list = document.getElementById('page-list');
   if (!list || !engine.pdfDoc) return;
   list.innerHTML = '';
-  for (let pageNo = 1; pageNo <= engine.pdfDoc.numPages; pageNo++) {
-    const page = await engine.pdfDoc.getPage(pageNo);
-    const viewport = page.getViewport({ scale: 0.2 });
+  const doc = engine.pdfDoc;
+  // A picture is drawn when its place in the list scrolls into view.
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(async (entry) => {
+      if (!entry.isIntersecting) return;
+      const button = entry.target;
+      observer.unobserve(button);
+      if (engine.pdfDoc !== doc) return;
+      const page = await doc.getPage(Number(button.dataset.page));
+      const viewport = page.getViewport({ scale: 0.2 });
+      const canvas = button.querySelector('canvas');
+      canvas.width = Math.ceil(viewport.width);
+      canvas.height = Math.ceil(viewport.height);
+      await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+    });
+  }, { root: list, rootMargin: '400px 0px' });
+  const first = await doc.getPage(1);
+  const size = first.getViewport({ scale: 0.2 });
+  for (let pageNo = 1; pageNo <= doc.numPages; pageNo++) {
     const canvas = document.createElement('canvas');
-    canvas.width = Math.ceil(viewport.width);
-    canvas.height = Math.ceil(viewport.height);
-    await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+    canvas.width = Math.ceil(size.width);
+    canvas.height = Math.ceil(size.height);
     const button = document.createElement('button');
     button.type = 'button';
     button.title = `Sahifa ${pageNo}`;
+    button.dataset.page = String(pageNo);
     button.append(canvas);
     const label = document.createElement('span');
     label.textContent = String(pageNo);
@@ -202,6 +215,7 @@ async function buildPageList(engine) {
       list.querySelectorAll('button').forEach((item) => item.classList.toggle('active', item === button));
     });
     list.append(button);
+    observer.observe(button);
   }
 }
 
@@ -272,6 +286,26 @@ async function saveEditsToContract(contractId, baseVersionNo, edits, options) {
   if (built.problems.length > 0) {
     return { status: 'blocked', messages: built.problems.map(window.TextOps.describeProblem) };
   }
+  // Page changes go after the text changes, in the same draft (one new version).
+  const uidAt = (index) => (positions.find((page) => page.position === index + 1) || {}).page_uid;
+  const newUid = () => `pg_${Array.from(window.crypto.getRandomValues(new Uint8Array(6)), (b) => b.toString(16).padStart(2, '0')).join('')}`;
+  let seq = built.ops.length;
+  const pageOps = [];
+  for (const change of options.pages || []) {
+    seq += 1;
+    if (change.type === 'rotate' && uidAt(change.pageIndex)) {
+      pageOps.push({ id: `op${seq}`, kind: 'page.rotate', page_uid: uidAt(change.pageIndex), rotation: change.rotation });
+    } else if (change.type === 'insert' && uidAt(change.afterIndex)) {
+      pageOps.push({ id: `op${seq}`, kind: 'page.insert', new_page_uid: newUid(), after_page_uid: uidAt(change.afterIndex) });
+    }
+  }
+  for (const change of options.pages || []) {
+    seq += 1;
+    if (change.type === 'delete' && uidAt(change.pageIndex)) {
+      pageOps.push({ id: `op${seq}`, kind: 'page.delete', page_uid: uidAt(change.pageIndex) });
+    }
+  }
+  built.ops.push(...pageOps);
   if (built.ops.length === 0) return { status: 'nothing' };
 
   const clientSessionId = newCommitRequestId();
