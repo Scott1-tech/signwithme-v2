@@ -47,7 +47,7 @@
     el.dataset.key = overlay.key;
     el.style.pointerEvents = 'auto';
     el.style.cursor = 'move';
-    el.setAttribute('title', 'Surish uchun ushlab torting');
+    el.setAttribute('title', 'Drag to move');
     const stop = (event) => event.stopPropagation();
     el.addEventListener('mousedown', stop);
     el.addEventListener('click', stop);

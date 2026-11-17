@@ -681,15 +681,15 @@
     <div class="status-strip">
       <div class="brand-box">
         <i class="fa-solid fa-microchip"></i>
-        <span>PDF muharriri</span>
+        <span>PDF editor</span>
       </div>
 
       <div class="header-actions">
         <a class="action-chip" id="back-link" href="/" style="text-decoration:none;color:inherit;">
-          <i class="fa-solid fa-arrow-left"></i> <span>Shartnomaga qaytish</span>
+          <i class="fa-solid fa-arrow-left"></i> <span>Back to contract</span>
         </a>
         <button class="btn-apply-sejda" id="btn-save-contract" type="button" style="padding:7px 14px;font-size:13px;">
-          Shartnomaga saqlash <i class="fa-solid fa-floppy-disk" style="font-size:13px;"></i>
+          Save to contract <i class="fa-solid fa-floppy-disk" style="font-size:13px;"></i>
         </button>
       </div>
     </div>
@@ -700,16 +700,16 @@
           <i class="fa-solid fa-i-cursor"></i><i class="fa-solid fa-font" style="font-size:11px;margin-left:-3px;"></i> Text
         </button>
         <button class="s-tool" data-tool="line">
-          <i class="fa-solid fa-minus"></i> Lines (Chiziq)
+          <i class="fa-solid fa-minus"></i> Lines
         </button>
         <button class="s-tool" data-tool="whiteout">
           <i class="fa-solid fa-eraser"></i> Whiteout
         </button>
         <button class="s-tool" data-tool="check">
-          <i class="fa-regular fa-square-check"></i> Forms (✓)
+          <i class="fa-regular fa-square-check"></i> Check
         </button>
         <button class="s-tool" data-tool="cross">
-          <i class="fa-solid fa-xmark"></i> Forms (✕)
+          <i class="fa-solid fa-xmark"></i> Cross
         </button>
         <button class="s-tool" data-tool="field">
           <i class="fa-solid fa-pen-to-square"></i> Field
@@ -729,10 +729,10 @@
         <button class="s-tool" data-tool="shape">
           <i class="fa-solid fa-shapes"></i> Shapes
         </button>
-        <button class="s-tool" id="btn-undo" title="Oxirgi o‘zgarishni bekor qilish (matn, imzo yoki sana)">
+        <button class="s-tool" id="btn-undo" title="Undo the last change (text, signature or date)">
           <i class="fa-solid fa-rotate-left"></i> Undo
         </button>
-        <button class="s-tool" id="btn-redo" title="Bekor qilinganini qaytarish">
+        <button class="s-tool" id="btn-redo" title="Redo">
           <i class="fa-solid fa-rotate-right"></i> Redo
         </button>
       </div>
@@ -752,13 +752,13 @@
   <div class="modal-bg" id="sig-modal">
     <div class="modal-card">
       <div style="display:flex; justify-content:space-between; align-items:center; font-weight:600;">
-        <span>Imzongizni chizing</span>
+        <span>Draw your signature</span>
         <button id="sig-close" style="border:none; background:none; cursor:pointer; font-size:16px;"><i class="fa-solid fa-xmark"></i></button>
       </div>
       <canvas id="sig-pad" width="390" height="150"></canvas>
       <div style="display:flex; justify-content:flex-end; gap:8px;">
-        <button class="action-chip" id="sig-clear">Tozalash</button>
-        <button class="btn-apply-sejda" id="sig-use" style="padding:7px 16px; font-size:13px;">Imzoni tanlash</button>
+        <button class="action-chip" id="sig-clear">Clear</button>
+        <button class="btn-apply-sejda" id="sig-use" style="padding:7px 16px; font-size:13px;">Use signature</button>
       </div>
     </div>
   </div>

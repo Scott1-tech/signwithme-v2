@@ -38,9 +38,9 @@
           e.stopPropagation();
         };
         bar.innerHTML = `
-          <button class="f-btn" data-cmd="bold" title="Qalin (Bold)"><i class="fa-solid fa-bold"></i></button>
-          <button class="f-btn" data-cmd="italic" title="Yotiq (Italic)"><i class="fa-solid fa-italic"></i></button>
-          <button class="f-btn" data-cmd="move" title="Joyini surish (Ushlab torting)"><i class="fa-solid fa-arrows-up-down-left-right"></i></button>
+          <button class="f-btn" data-cmd="bold" title="Bold"><i class="fa-solid fa-bold"></i></button>
+          <button class="f-btn" data-cmd="italic" title="Italic"><i class="fa-solid fa-italic"></i></button>
+          <button class="f-btn" data-cmd="move" title="Move (drag)"><i class="fa-solid fa-arrows-up-down-left-right"></i></button>
           <div class="f-sep"></div>
           <button class="f-btn" data-cmd="dec"><i class="fa-solid fa-minus"></i></button>
           <input type="number" data-cmd="size" value="11" min="5" max="72" style="width:42px;text-align:center;border:1px solid #cbd5e1;border-radius:3px;padding:2px;" />
@@ -51,21 +51,21 @@
             <option value="Helvetica, Arial, sans-serif">Helvetica / Arial</option>
             <option value="Courier New, monospace">Courier New</option>
           </select>
-          <input type="color" data-cmd="color" value="#000000" title="Matn / Chiziq rangi" style="width:22px;height:22px;border:none;background:none;cursor:pointer;" />
+          <input type="color" data-cmd="color" value="#000000" title="Text / line colour" style="width:22px;height:22px;border:none;background:none;cursor:pointer;" />
           <div class="f-sep" id="line-tools-sep" style="display:none;"></div>
-          <button class="f-btn" data-cmd="line-shorter" id="btn-line-shorter" style="display:none;" title="Chiziqni qisqartirish">
+          <button class="f-btn" data-cmd="line-shorter" id="btn-line-shorter" style="display:none;" title="Shorten the line">
             <i class="fa-solid fa-compress"></i> -Uzunlik
           </button>
-          <button class="f-btn" data-cmd="line-longer" id="btn-line-longer" style="display:none;" title="Chiziqni uzaytirish">
+          <button class="f-btn" data-cmd="line-longer" id="btn-line-longer" style="display:none;" title="Lengthen the line">
             <i class="fa-solid fa-expand"></i> +Uzunlik
           </button>
-          <button class="f-btn" data-cmd="toggle-line" id="btn-toggle-line" style="display:none;color:#0956a6;" title="Tagidagi chiziqni yoqish/o'chirish">
+          <button class="f-btn" data-cmd="toggle-line" id="btn-toggle-line" style="display:none;color:#0956a6;" title="Show / hide the line">
             <i class="fa-solid fa-underline"></i> Chiziq
           </button>
           <div class="f-sep"></div>
-          <button class="f-btn" data-cmd="delete" style="color:#dc2626;" title="Butunlay o'chirish"><i class="fa-regular fa-trash-can"></i></button>
+          <button class="f-btn" data-cmd="delete" style="color:#dc2626;" title="Delete"><i class="fa-regular fa-trash-can"></i></button>
           <div class="f-sep"></div>
-          <button class="f-btn" data-cmd="close" title="Panelni yopish (Esc)"><i class="fa-solid fa-xmark"></i></button>
+          <button class="f-btn" data-cmd="close" title="Close (Esc)"><i class="fa-solid fa-xmark"></i></button>
         `;
         document.body.appendChild(bar);
         this.textBar = bar;
@@ -126,7 +126,7 @@
         // (the bar's own ✥ does the same). It shows and hides with the bar.
         const grip = document.createElement('div');
         grip.className = 'line-grip';
-        grip.title = 'Surish uchun ushlab torting';
+        grip.title = 'Drag to move';
         grip.innerHTML = '<i class="fa-solid fa-grip-vertical"></i>';
         grip.addEventListener('mousedown', (e) => {
           if (!this.focusedNode) return;
@@ -213,7 +213,7 @@
         bar.className = 'sejda-floating-bar';
         bar.onmousedown = (e) => e.stopPropagation();
         bar.innerHTML = `
-          <label class="f-btn" title="Fon rangi">
+          <label class="f-btn" title="Fill colour">
             <i class="fa-solid fa-fill-drip"></i> Fon:
             <input type="color" data-box="fill" value="#ffffff" style="width:22px;height:20px;border:1px solid #cbd5e1;cursor:pointer;" />
           </label>
@@ -570,11 +570,11 @@
         bar.innerHTML = `
           <span class="page-num-badge">${pageNum}</span>
           <div class="page-ctrl-group">
-            <button data-act="del" title="Sahifani o'chirish"><i class="fa-regular fa-trash-can"></i></button>
-            <button data-act="zin" title="Yaqinlashtirish"><i class="fa-solid fa-magnifying-glass-plus"></i></button>
-            <button data-act="zout" title="Uzoqlashtirish"><i class="fa-solid fa-magnifying-glass-minus"></i></button>
-            <button data-act="rccw" title="Chapga burish"><i class="fa-solid fa-rotate-left"></i></button>
-            <button data-act="rcw" title="O'ngga burish"><i class="fa-solid fa-rotate-right"></i></button>
+            <button data-act="del" title="Delete page"><i class="fa-regular fa-trash-can"></i></button>
+            <button data-act="zin" title="Zoom in"><i class="fa-solid fa-magnifying-glass-plus"></i></button>
+            <button data-act="zout" title="Zoom out"><i class="fa-solid fa-magnifying-glass-minus"></i></button>
+            <button data-act="rccw" title="Turn left"><i class="fa-solid fa-rotate-left"></i></button>
+            <button data-act="rcw" title="Turn right"><i class="fa-solid fa-rotate-right"></i></button>
           </div>
           <button class="action-chip" data-act="ins" style="color:#2563eb;">
             <i class="fa-solid fa-circle-plus"></i> Insert page here
@@ -1055,11 +1055,11 @@
 
         const lhLeft = document.createElement('div');
         lhLeft.className = 'line-handle lh-left';
-        lhLeft.title = 'Chap uchini tortib chiziqni cho\'zish / qisqartirish';
+        lhLeft.title = 'Drag the end to lengthen or shorten the line';
 
         const lhRight = document.createElement('div');
         lhRight.className = 'line-handle lh-right';
-        lhRight.title = 'O\'ng uchini tortib chiziqni cho\'zish / qisqartirish';
+        lhRight.title = 'Drag the end to lengthen or shorten the line';
 
         wrap.append(lhLeft, input, lhRight);
         state.domLayer.appendChild(wrap);
@@ -1147,7 +1147,7 @@
         box.style.width = `${w}px`;
         box.style.height = `${h}px`;
         box.style.fontSize = `${h * 0.9}px`;
-        box.title = 'Belgilash uchun bosing (✓)';
+        box.title = 'Click to tick (✓)';
 
         box.addEventListener('mousedown', (e) => {
           e.preventDefault();
@@ -1278,7 +1278,7 @@
           }
         }
         if (lost > 0) {
-          alert(`${lost} ta o‘zgarish sahifa qayta chizilganda tiklanmadi. Iltimos, tekshirib qayta kiriting.`);
+          alert(`${lost} change(s) could not be carried over when the page was redrawn. Please check and make them again.`);
         }
       }
 
@@ -1313,7 +1313,7 @@
       collectEdits() {
         const edits = [];
         const unsupported = [];
-        const place = (state) => `Sahifa ${state.pageIndex + 1}`;
+        const place = (state) => `Page ${state.pageIndex + 1}`;
         const change = (entry, newText, blank) => ({
           pageIndex: entry.state.pageIndex,
           ptX: entry.pt.x,
@@ -1347,10 +1347,10 @@
           } else {
             // 'underscore' is a blank in the text; 'vector' is a line drawn in the page.
             if (!erased && (el.classList.contains('line-hidden') || this._geometryChanged(entry))) {
-              unsupported.push(`${place(state)}: chiziqni yashirish yoki o‘zgartirish hozircha saqlanmaydi.`);
+              unsupported.push(`${place(state)}: hiding or changing a line cannot be saved yet.`);
             }
             if (kind === 'vector' && erased) {
-              unsupported.push(`${place(state)}: chiziqni o‘chirish hozircha saqlanmaydi.`);
+              unsupported.push(`${place(state)}: deleting a line cannot be saved yet.`);
             } else if (kind === 'underscore' && erased) {
               edits.push(change(entry, '', true));
             }
@@ -1360,18 +1360,18 @@
         for (const state of this.pages) {
           const turned = state.rotation !== (((state.pdfPage.rotate || 0) % 360) + 360) % 360;
           if (turned && !this.contractMode) {
-            unsupported.push(`${place(state)}: sahifa burilgan — burish hozircha saqlanmaydi (0° ga qaytaring).`);
+            unsupported.push(`${place(state)}: the page is turned — turning cannot be saved here (turn it back to 0°).`);
           }
           if (turned && this.collectPageMarkup(state).length) {
-            unsupported.push(`${place(state)}: burilgan sahifaga qo‘shilgan matn va belgilar hozircha saqlanmaydi — avval sahifani saqlang, so‘ng qo‘shing.`);
+            unsupported.push(`${place(state)}: text and marks added to a turned page cannot be saved yet — save the turn first, then add them.`);
           }
           // Added text, ✓ / ✕ and whiteout are saved as markup; other added objects are not yet.
           if (state.domLayer.querySelector('.added-obj:not([data-type="added-text"]):not([data-type="check"]):not([data-type="cross"]), .sejda-box-item:not([data-type="whiteout"])')) {
-            unsupported.push(`${place(state)}: qo‘shilgan matn yoki shakl hozircha saqlanmaydi.`);
+            unsupported.push(`${place(state)}: this added object cannot be saved yet.`);
           }
         }
         if (this.structureChanged && !this.contractMode) {
-          unsupported.push('Sahifalar qo‘shilgan yoki o‘chirilgan — bu hozircha saqlanmaydi.');
+          unsupported.push('Pages were added or deleted — this cannot be saved here.');
         }
         return { edits, unsupported: [...new Set(unsupported)] };
       }
@@ -1581,7 +1581,7 @@
           if (!btn) return;
           const act = btn.dataset.act;
           if (['zin', 'zout', 'rcw', 'rccw'].includes(act) && this._hasDomOnlyChanges(state)) {
-            alert('Bu sahifada hozircha saqlanmaydigan o‘zgarishlar bor (siljitish, yashirish yoki shakl). Ularni bekor qiling, so‘ng masshtabni yoki burilishni o‘zgartiring.');
+            alert('This page has changes that cannot be carried over (a moved line, a hidden line or a shape). Undo them, then zoom or turn the page.');
             return;
           }
           if (act === 'zin') {
@@ -1605,30 +1605,30 @@
             await this._renderStage(state, true);
             this.restorePageMarkup(state, carried);
           } else if (act === 'del' && this.contractMode) {
-            if (this.pages.filter((page) => !page.deleted).length <= 1) return alert('Yagona sahifani o‘chirib bo‘lmaydi.');
-            if (!confirm(`Sahifa ${state.pageIndex + 1} o‘chirilsinmi? «Shartnomaga saqlash» bosilganda o‘chadi.`)) return;
+            if (this.pages.filter((page) => !page.deleted).length <= 1) return alert('The only page cannot be deleted.');
+            if (!confirm(`Delete page ${state.pageIndex + 1}? It is deleted when you press «Save to contract».`)) return;
             state.deleted = true;
             bar.classList.add('page-pending-delete');
             state.stage.classList.add('page-pending-delete');
-            bar.querySelector('.page-num-badge').title = 'Saqlanganda o‘chiriladi';
+            bar.querySelector('.page-num-badge').title = 'Deleted when saved';
             this.structureChanged = true;
             if (window.SignOverlays) window.SignOverlays.updateButtons();
           } else if (act === 'ins' && this.contractMode) {
             state.insertsAfter = (state.insertsAfter || 0) + 1;
             const note = document.createElement('div');
             note.className = 'page-pending-insert';
-            note.textContent = 'Yangi bo‘sh sahifa — «Shartnomaga saqlash» bosilganda qo‘shiladi';
+            note.textContent = 'New blank page — added when you press «Save to contract»';
             state.stage.after(note);
             this.structureChanged = true;
           } else if (act === 'del') {
-            if (this._hasPendingChanges()) return alert('Avval matndagi o‘zgarishlarni saqlang yoki sahifani yangilang, so‘ng sahifalarni o‘zgartiring.');
+            if (this._hasPendingChanges()) return alert('Save the text changes first (or reload the page), then change the pages.');
             const doc = await PDFDocument.load(this.pdfBytes);
-            if (doc.getPageCount() <= 1) return alert('Yagona sahifani o\'chirib bo\'lmaydi.');
+            if (doc.getPageCount() <= 1) return alert('The only page cannot be deleted.');
             doc.removePage(state.pageIndex);
             await this.loadPDF(await doc.save());
             this.structureChanged = true;
           } else if (act === 'ins') {
-            if (this._hasPendingChanges()) return alert('Avval matndagi o‘zgarishlarni saqlang yoki sahifani yangilang, so‘ng sahifalarni o‘zgartiring.');
+            if (this._hasPendingChanges()) return alert('Save the text changes first (or reload the page), then change the pages.');
             const doc = await PDFDocument.load(this.pdfBytes);
             doc.insertPage(state.pageIndex, [612, 792]);
             await this.loadPDF(await doc.save());
@@ -1760,7 +1760,7 @@
               }
 
               if (this.activeTool === 'link') {
-                const url = prompt('Havola (URL) manzilini kiriting:', 'https://');
+                const url = prompt('Link address (URL):', 'https://');
                 if (!url) return;
                 const box = this._createResizableBox(state, x, y, w, h, 'link');
                 box.dataset.url = url;
@@ -1784,7 +1784,7 @@
             const el = this._createObjWrap(state, startX, startY - 12, 165, 22, 'field');
             const inp = document.createElement('input');
             inp.type = 'text';
-            inp.placeholder = 'Matn kiriting...';
+            inp.placeholder = 'Type text...';
             inp.style.cssText = 'width:100%;height:100%;border:1px solid #64748b;background:rgba(241,245,249,0.85);padding:2px 6px;font-size:13px;outline:none;';
             el.appendChild(inp);
             inp.focus();
@@ -2144,7 +2144,7 @@
         ed.className = 'added-text-editor';
         ed.contentEditable = 'true';
         ed.spellcheck = false;
-        ed.dataset.placeholder = 'Matn yozing...';
+        ed.dataset.placeholder = 'Type text...';
         ed.style.fontSize = `${10.5 * state.scale}px`;
         ed.style.fontFamily = 'Times New Roman, Times, serif';
         ed.dataset.fontSize = '10.5';
@@ -2562,24 +2562,24 @@
           markupTaken = taken;
           engine.pages.forEach((state) => engine.showPageMarkup(state, byPage.get(state.pageIndex) || []));
         } catch (error) {
-          statusLine.textContent = 'Qo‘shilgan matn va belgilar yuklanmadi.';
+          statusLine.textContent = 'The added text and marks could not be loaded.';
         }
         markupShown = window.MarkupBridge.signature(engine.collectMarkup());
       };
       try {
         if (contractId) {
-          statusLine.textContent = 'Shartnoma yuklanmoqda…';
+          statusLine.textContent = 'Loading the contract…';
           const loaded = await loadContractVersion(contractId);
           baseVersionNo = loaded.versionNo;
           await engine.loadPDF(loaded.bytes);
           await showContractMarkup();
-          statusLine.textContent = `Versiya ${baseVersionNo} ochildi.`;
+          statusLine.textContent = `Version ${baseVersionNo}.`;
         } else {
           await engine.loadPDF(await buildBinarySamplePdf());
-          statusLine.textContent = 'Namuna hujjat. Shartnomani tahrirlash uchun shartnoma sahifasidagi «Edit PDF» tugmasini bosing.';
+          statusLine.textContent = 'Sample document. Open a contract from the dashboard to edit it.';
         }
       } catch (error) {
-        statusLine.textContent = error instanceof Error ? error.message : 'PDF yuklanmadi.';
+        statusLine.textContent = error instanceof Error ? error.message : 'The PDF could not be loaded.';
       }
       buildPageList(engine).catch(() => {});
       // Ask the contract page for its signatures and dates, now that the pages exist.
@@ -2588,7 +2588,7 @@
       // On a contract only text edits are written into the file so far. A tool
       // whose work the save would refuse is switched off here, instead of
       // letting the person do the work and lose it at «Saqlash».
-      const NOT_SAVED = 'Hozircha shartnomaga saqlanmaydi';
+      const NOT_SAVED = 'Cannot be saved to the contract yet';
       if (contractId) {
         document.querySelectorAll('#main-toolbar .s-tool[data-tool]').forEach((btn) => {
           if (['text', 'check', 'cross', 'whiteout'].includes(btn.dataset.tool)) return;
@@ -2612,7 +2612,7 @@
           engine.setTool(tool);
 
           if (tool === 'sign' && contractId && editorIsEmbedded()) {
-            statusLine.textContent = 'Imzo qo‘yiladigan joyni sahifada bosing.';
+            statusLine.textContent = 'Click the page where the signature goes.';
           } else if (tool === 'sign') document.getElementById('sig-modal').classList.add('open');
           if (tool === 'image') document.getElementById('img-upload').click();
         };
@@ -2680,48 +2680,48 @@
 
       saveButton.onclick = async () => {
         if (!contractId || baseVersionNo === null || !engine.pdfBytes) {
-          statusLine.textContent = 'Shartnoma hali yuklanmadi.';
+          statusLine.textContent = 'The contract has not loaded yet.';
           return;
         }
         // Only the lines that changed are written; the rest of the file stays as it is.
         const plan = engine.collectEdits();
         if (plan.unsupported.length) {
-          statusLine.textContent = `Saqlanmadi: ${plan.unsupported.join(' ')}`;
+          statusLine.textContent = `Not saved: ${plan.unsupported.join(' ')}`;
           return;
         }
         const marks = engine.collectMarkup();
         const marksChanged = window.MarkupBridge.signature(marks) !== markupShown;
         const pages = engine.pagePlan();
         if (!plan.edits.length && !marksChanged && !pages.length) {
-          statusLine.textContent = 'O‘zgarish yo‘q.';
+          statusLine.textContent = 'No changes.';
           return;
         }
-        setBusy(true, 'Saqlanmoqda…');
+        setBusy(true, 'Saving…');
         try {
           // Page uids of the version being edited: marks name their page by it (kept across versions).
           const baseUids = await pageUidsOf(contractId, baseVersionNo);
           if (!plan.edits.length && !pages.length) {
             // Only added text / marks: they are the contract's markup, the PDF itself stays as it is.
             await saveContractMarkup(contractId, baseUids, marks, markupTaken);
-            await showSaved('Saqlandi: qo‘shilgan matn va belgilar.');
+            await showSaved('Saved: added text and marks.');
             return;
           }
           const result = await saveEditsToContract(contractId, baseVersionNo, plan.edits.filter((edit) => !(engine.pages[edit.pageIndex] || {}).deleted), {
             pages,
             confirmSignatures: (count) => window.confirm(
-              `Bu shartnomada ${count} ta imzo bor. Hujjat o‘zgargani uchun ular o‘chiriladi va shartnoma qayta imzolanadi. Davom etamizmi?`,
+              `This contract has ${count} signature(s). Because the document changes, they will be removed and the contract must be signed again. Continue?`,
             ),
           });
           if (result.status === 'blocked') {
-            statusLine.textContent = `Saqlanmadi: ${result.messages.join(' ')}`;
+            statusLine.textContent = `Not saved: ${result.messages.join(' ')}`;
             return;
           }
           if (result.status === 'nothing') {
-            statusLine.textContent = 'O‘zgarish yo‘q.';
+            statusLine.textContent = 'No changes.';
             return;
           }
           if (result.status === 'cancelled') {
-            statusLine.textContent = 'Saqlanmadi: imzolar o‘chirilishi bekor qilindi.';
+            statusLine.textContent = 'Not saved: removing the signatures was cancelled.';
             return;
           }
           baseVersionNo = result.version.version.version_no;
@@ -2730,7 +2730,7 @@
             try {
               await saveContractMarkup(contractId, baseUids, marks.filter((mark) => !(engine.pages[mark.pageIndex] || {}).deleted), markupTaken);
             } catch (error) {
-              note += ` Qo‘shilgan matn va belgilar saqlanmadi: ${describeSaveFailure(error)}`;
+              note += ` The added text and marks were not saved: ${describeSaveFailure(error)}`;
             }
           }
           await showSaved(note);

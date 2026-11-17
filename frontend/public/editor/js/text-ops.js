@@ -281,19 +281,19 @@
 
   // A problem, in words for the person editing (Uzbek, as the rest of the editor).
   function describeProblem(item) {
-    const where = `Sahifa ${item.page}`;
-    const shown = item.text ? ` («${item.text}»)` : '';
+    const where = `Page ${item.page}`;
+    const shown = item.text ? ` ("${item.text}")` : '';
     switch (item.code) {
       case 'blank_add':
-        return `${where}: bo‘sh joyga yangi matn qo‘shish hozircha saqlanmaydi${shown}.`;
+        return `${where}: new text in an empty place cannot be saved this way${shown}.`;
       case 'partial_move':
-        return `${where}: qatorning bir qismini alohida siljitib bo‘lmaydi — butun qatorni tanlang${shown}.`;
+        return `${where}: part of a line cannot be moved on its own — move the whole line${shown}.`;
       case 'text_not_found':
-        return `${where}: matn o‘zgargan — sahifani yangilab, qayta tahrirlang${shown}.`;
+        return `${where}: the text has changed — reload the page and edit it again${shown}.`;
       case 'not_editable':
-        return `${where}: bu joydagi matn tahrirlanmaydi${item.detail ? ` (${item.detail})` : ''}${shown}.`;
+        return `${where}: this text cannot be edited${item.detail ? ` (${item.detail})` : ''}${shown}.`;
       default:
-        return `${where}: tahrir qilingan matn joyi topilmadi${shown}.`;
+        return `${where}: the place of the edited text was not found${shown}.`;
     }
   }
 

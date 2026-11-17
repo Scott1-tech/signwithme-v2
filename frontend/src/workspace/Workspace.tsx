@@ -253,7 +253,23 @@ export function Workspace() {
 
   // F2: while the draft carries page ops the viewer shows the WHOLE draft (`usePageStructure`).
   const [draftBytes, setDraftBytes] = useState<ArrayBuffer | null>(null);
-  const viewer = usePdfViewer(draftBytes ?? source);
+  // The pages are shown by the PDF editor in its frame (`EmbeddedEditor`), which
+  // opens the file itself: this page does not open it a second time. The
+  // page sizes it needs come from the server's page list instead.
+  const editorShowsPages = Boolean(contractId) && editorDocument.status !== 'unavailable';
+  const viewer = usePdfViewer(editorShowsPages ? null : draftBytes ?? source);
+  const documentPageSizes = useMemo(() => {
+    const map = new Map<number, { width: number; height: number }>();
+    editorDocument.pages.forEach((entry) => {
+      const turned = swapsAxes(normalizeQuarter(entry.rotation));
+      map.set(entry.position, turned
+        ? { width: entry.height_pt, height: entry.width_pt }
+        : { width: entry.width_pt, height: entry.height_pt });
+    });
+    return map;
+  }, [editorDocument.pages]);
+  const shownPageSizes = editorShowsPages ? documentPageSizes : viewer.pageSizes;
+  const shownPageCount = editorShowsPages ? editorDocument.pages.length : viewer.pageCount;
   const { scrollToPage } = viewer;
   /** ROTFIX: a box drawn on page `page` as displayed -> the engine's (unrotated) box. */
   const toEngineRect = <T extends { x: number; y: number; w: number; h: number }>(page: number, rect: T): T => {
@@ -268,6 +284,7 @@ export function Workspace() {
    * slot offsets for a page that has not changed yet.
    */
   const slotPageSizes = useMemo(() => {
+    if (editorShowsPages) return documentPageSizes;
     if (!draftBytes || editorDocument.pages.length === 0) return viewer.pageSizes;
     const map = new Map<number, { width: number; height: number }>();
     editorDocument.pages.forEach((entry) => {
@@ -277,7 +294,7 @@ export function Workspace() {
         : { width: entry.width_pt, height: entry.height_pt });
     });
     return map;
-  }, [draftBytes, editorDocument.pages, viewer.pageSizes]);
+  }, [draftBytes, editorDocument.pages, viewer.pageSizes, editorShowsPages, documentPageSizes]);
   const selection = useSelection();
   const sections = usePanelSections(panel);
   // The ONE undo history (W2): annotations and slot positions, never a server write.
@@ -329,7 +346,7 @@ export function Workspace() {
   } = useSlotLayout({
     contractId,
     slotSet: allSlotSet,
-    pageSizes: viewer.pageSizes,
+    pageSizes: shownPageSizes,
     slotPageSizes,
     scale: viewer.scale,
     history,
@@ -420,7 +437,7 @@ export function Workspace() {
     rows: signatures,
     place: contractSignatures.place,
     remove: contractSignatures.remove,
-    pageCount: viewer.pageCount,
+    pageCount: shownPageCount,
     pageSizeOf,
     blocked,
     setBusy,

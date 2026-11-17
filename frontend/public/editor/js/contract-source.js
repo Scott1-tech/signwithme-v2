@@ -31,11 +31,11 @@ async function editorRequest(path, options) {
   try {
     response = await fetch(path, Object.assign({}, options, { headers }));
   } catch (error) {
-    throw new EditorApiError(0, 'network', 'Serverga ulanib bo‘lmadi. Internetni tekshirib, qayta urinib ko‘ring.', {});
+    throw new EditorApiError(0, 'network', 'Could not reach the server. Check the connection and try again.', {});
   }
   if (response.ok) return response;
   if (response.status === 401) {
-    throw new EditorApiError(401, 'unauthorized', 'Sessiya tugagan. Ilovaga qayta kiring, so‘ng bu sahifani yangilang.', {});
+    throw new EditorApiError(401, 'unauthorized', 'Your session has ended. Sign in to the app again, then reload this page.', {});
   }
   let body = null;
   try {
@@ -124,31 +124,31 @@ function describeSavedVersion(saved) {
   const unchanged = (saved.warnings || []).some((warning) => warning.code === 'unchanged');
   const parts = [
     unchanged
-      ? `Fayl o‘zgarmagan; versiya ${saved.version.version_no} qoldi.`
-      : `Saqlandi: versiya ${saved.version.version_no}.`,
+      ? `The file did not change; it stays version ${saved.version.version_no}.`
+      : `Saved: version ${saved.version.version_no}.`,
   ];
   if (saved.remapped && saved.remapped.signatures_removed) {
-    parts.push(`Imzolar o‘chirildi: ${saved.remapped.signatures_removed}.`);
+    parts.push(`Signatures removed: ${saved.remapped.signatures_removed}.`);
   }
-  if (saved.review_reset) parts.push('Shartnoma qayta ko‘rib chiqishga yuborildi.');
+  if (saved.review_reset) parts.push('The contract went back for review.');
   return parts.join(' ');
 }
 
 /** What a failed save says on the page. */
 function describeSaveFailure(error) {
-  if (!(error instanceof EditorApiError)) return 'Saqlab bo‘lmadi. Qayta urinib ko‘ring.';
-  if (error.status === 403) return 'Bu hujjatni tahrirlash huquqingiz yo‘q.';
+  if (!(error instanceof EditorApiError)) return 'Could not save. Try again.';
+  if (error.status === 403) return 'You may not edit this document.';
   switch (error.code) {
     case 'base_outdated':
-      return 'Shartnomaning yangi versiyasi bor. Sahifani yangilang va o‘zgarishlarni qayta kiriting.';
+      return 'There is a newer version of this contract. Reload the page and make the changes again.';
     case 'draft_locked':
-      return 'Hujjat hozir ish oynasida tahrirlanmoqda. Keyinroq qayta urinib ko‘ring.';
+      return 'The document is being edited elsewhere. Try again later.';
     case 'contract_busy':
-      return 'Shartnoma hozir tahlil qilinmoqda. Tugagach qayta urinib ko‘ring.';
+      return 'The contract is being analysed. Try again when it has finished.';
     case 'contract_completed':
-      return 'Shartnoma yakunlangan; hujjatni o‘zgartirib bo‘lmaydi.';
+      return 'The contract is completed; the document cannot change.';
     case 'page_count_changed':
-      return 'Sahifalar soni o‘zgargan. Sahifani yangilab qayta urinib ko‘ring.';
+      return 'The number of pages changed. Reload the page and try again.';
     default:
       return error.message;
   }
@@ -203,7 +203,7 @@ async function buildPageList(engine) {
     canvas.height = Math.ceil(size.height);
     const button = document.createElement('button');
     button.type = 'button';
-    button.title = `Sahifa ${pageNo}`;
+    button.title = `Page ${pageNo}`;
     button.dataset.page = String(pageNo);
     button.append(canvas);
     const label = document.createElement('span');
@@ -255,7 +255,7 @@ function explainSaveError(error, labels) {
   return new EditorApiError(
     error.status,
     error.code,
-    `Sahifa ${label.page}: «${label.text}» — ${error.message}`,
+    `Page ${label.page}: "${label.text}" — ${error.message}`,
     error.details,
   );
 }
@@ -276,7 +276,7 @@ async function saveEditsToContract(contractId, baseVersionNo, edits, options) {
   for (const pageIndex of [...new Set(edits.map((edit) => edit.pageIndex))]) {
     const info = positions.find((page) => page.position === pageIndex + 1);
     if (!info) {
-      return { status: 'blocked', messages: [`Sahifa ${pageIndex + 1} topilmadi. Sahifani yangilang.`] };
+      return { status: 'blocked', messages: [`Page ${pageIndex + 1} was not found. Reload the page.`] };
     }
     const model = await editorJson(`${base}/versions/${baseVersionNo}/pages/${info.page_uid}/text`, 'GET');
     pages.push({ pageIndex, pageUid: info.page_uid, widthPt: model.width_pt, lines: textLinesOf(model) });
@@ -317,7 +317,7 @@ async function saveEditsToContract(contractId, baseVersionNo, edits, options) {
     throw new EditorApiError(
       409,
       'draft_locked',
-      `Hujjat hozir ${draft.owner_name || 'boshqa foydalanuvchi'} tomonidan tahrirlanmoqda.`,
+      `The document is being edited by ${draft.owner_name || 'another user'}.`,
       {},
     );
   }
