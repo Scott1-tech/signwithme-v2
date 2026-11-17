@@ -38,6 +38,67 @@
     };
   }
 
+  /*
+   * A placed signature or date can be dragged. While dragging it only moves on
+   * screen; on release the move goes to the contract page in points (right /
+   * down positive), which stores it and sends the new overlays back.
+   */
+  function makeDraggable(el, page, overlay, isSvg) {
+    el.dataset.key = overlay.key;
+    el.style.pointerEvents = 'auto';
+    el.style.cursor = 'move';
+    el.setAttribute('title', 'Drag to move');
+    const stop = (event) => event.stopPropagation();
+    el.addEventListener('mousedown', stop);
+    el.addEventListener('click', stop);
+    el.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0 || state.busy) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const startX = event.clientX;
+      const startY = event.clientY;
+      let moved = false;
+      try {
+        el.setPointerCapture(event.pointerId);
+      } catch (error) {
+        // dragging still works without capture
+      }
+      const place = (dx, dy) => {
+        if (isSvg) el.setAttribute('transform', `translate(${dx} ${dy})`);
+        else el.style.transform = `translate(${dx}px, ${dy}px)`;
+      };
+      const onMove = (move) => {
+        const dx = move.clientX - startX;
+        const dy = move.clientY - startY;
+        if (!moved && Math.hypot(dx, dy) < 3) return;
+        moved = true;
+        el.classList.add('sign-overlay-dragging');
+        place(dx, dy);
+      };
+      const onUp = (up) => {
+        el.removeEventListener('pointermove', onMove);
+        el.removeEventListener('pointerup', onUp);
+        el.removeEventListener('pointercancel', onUp);
+        el.classList.remove('sign-overlay-dragging');
+        if (!moved || up.type === 'pointercancel') {
+          place(0, 0);
+          return;
+        }
+        // Screen pixels -> PDF points through the page's own viewport (zoom and turn included).
+        const viewport = page.viewport;
+        const a = viewport.convertToPdfPoint(0, 0);
+        const b = viewport.convertToPdfPoint(up.clientX - startX, up.clientY - startY);
+        window.parent.postMessage(
+          { type: 'editor:overlay-move', key: overlay.key, dx: b[0] - a[0], dy: -(b[1] - a[1]) },
+          origin,
+        );
+      };
+      el.addEventListener('pointermove', onMove);
+      el.addEventListener('pointerup', onUp);
+      el.addEventListener('pointercancel', onUp);
+    });
+  }
+
   function draw(page) {
     if (!page || !page.stage || !page.viewport || !page.pdfPage) return;
     let layer = null;
@@ -71,6 +132,7 @@
         el.style.top = `${box.top}px`;
         el.style.width = `${box.width}px`;
         el.style.height = `${box.height}px`;
+        if (overlay.src) makeDraggable(el, page, overlay, false);
         layer.appendChild(el);
       } else if (overlay.kind === 'date') {
         if (!svg) {
@@ -87,6 +149,7 @@
         text.style.fontWeight = overlay.bold ? '700' : '400';
         text.style.fontStyle = overlay.italic ? 'italic' : 'normal';
         text.textContent = overlay.text;
+        makeDraggable(text, page, overlay, true);
         svg.appendChild(text);
       }
     });

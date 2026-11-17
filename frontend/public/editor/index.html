@@ -140,6 +140,25 @@
     }
     .sejda-floating-bar.visible { display: flex; }
 
+    /* The grip beside the text being edited (engine.js `_startMove`). */
+    .line-grip {
+      position: fixed;
+      display: none;
+      width: 18px;
+      height: 22px;
+      align-items: center;
+      justify-content: center;
+      background: #2563eb;
+      color: #ffffff;
+      border-radius: 4px;
+      font-size: 11px;
+      cursor: move;
+      z-index: 5001;
+      box-shadow: 0 2px 6px rgba(37, 99, 235, 0.35);
+    }
+    .line-grip.visible { display: flex; }
+    body.moving-text, body.moving-text * { cursor: move !important; user-select: none !important; }
+
     .f-btn {
       border: 1px solid transparent;
       background: transparent;
@@ -163,6 +182,29 @@
       align-items: center;
       gap: 14px;
       padding: 16px;
+    }
+
+    /* Page changes waiting for «Shartnomaga saqlash» (engine.js `pagePlan`). */
+    .pdf-stage.page-pending-delete {
+      opacity: 0.35;
+      outline: 3px dashed #dc2626;
+      pointer-events: none;
+    }
+    .page-bar.page-pending-delete .page-num-badge { color: #dc2626; text-decoration: line-through; }
+    .page-pending-insert {
+      width: 60%;
+      margin: 10px auto 24px;
+      padding: 40px 16px;
+      text-align: center;
+      border: 2px dashed #94a3b8;
+      border-radius: 6px;
+      color: #475569;
+      background: #ffffff;
+      font: 13px/1.4 system-ui, sans-serif;
+    }
+
+    .pdf-stage.page-not-drawn {
+      background: #ffffff;
     }
 
     .page-bar {
@@ -225,6 +267,18 @@
       cursor: crosshair;
     }
 
+    /* Text-free pieces of the page under the lines that were changed (engine.js `_syncReveal`). */
+    .patch-layer {
+      position: absolute;
+      inset: 0;
+      z-index: 5;
+      pointer-events: none;
+    }
+    .patch-layer canvas {
+      position: absolute;
+      display: block;
+    }
+
     .dom-layer {
       position: absolute;
       inset: 0;
@@ -232,7 +286,7 @@
       pointer-events: none;
     }
 
-    /* Signatures and dates placed on the contract page (js/sign-overlays.js): shown, never edited or saved here. */
+    /* Signatures and dates placed on the contract page (js/sign-overlays.js): shown here and draggable; the page stores them. */
     .sign-overlay-layer {
       position: absolute;
       inset: 0;
@@ -257,6 +311,15 @@
     }
     .sign-overlay-dates text {
       fill: #111827;
+    }
+    .sign-overlay-signature[data-key]:hover,
+    .sign-overlay-dragging {
+      outline: 1px dashed #2563eb;
+      outline-offset: 1px;
+    }
+    .sign-overlay-dates text[data-key]:hover,
+    .sign-overlay-dates text.sign-overlay-dragging {
+      fill: #1d4ed8;
     }
     #main-toolbar .s-tool:disabled {
       opacity: 0.45;
@@ -284,10 +347,32 @@
       outline: none;
       padding: 0 1px;
       margin: 0 -1px;
-      z-index: 16;
+      z-index: 20;
       color: #000000;
       background: transparent;
       user-select: text;
+    }
+
+    /* Inside the contract page the page's own bar already names the contract:
+       the editor shows only its tools and the save button. */
+    body.embedded .brand-box { display: none; }
+    body.embedded .status-strip { justify-content: flex-end; }
+    /* A tool whose result cannot be written into the contract yet. */
+    .s-tool.not-saved,
+    .page-ctrl-group button.not-saved,
+    .action-chip.not-saved {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    /* An untouched line is the PDF's own picture: its editable twin stays
+       invisible (still clickable) until it is edited. Same for a rule. */
+    .sejda-line:not(.revealed) {
+      color: transparent !important;
+      caret-color: #000000;
+    }
+    .sejda-editable-line:not(.revealed)::after {
+      display: none !important;
     }
 
     body.tool-text .sejda-line:hover {
@@ -596,16 +681,15 @@
     <div class="status-strip">
       <div class="brand-box">
         <i class="fa-solid fa-microchip"></i>
-        <span>SejdaPDFEngine v5.0 (True Binary Engine)</span>
-        <span class="engine-pill" id="tool-hint">● Binary Deconstructor Active: Asl PDF matni va chiziqlari binar oqimdan ajratib olindi!</span>
+        <span>PDF editor</span>
       </div>
 
       <div class="header-actions">
         <a class="action-chip" id="back-link" href="/" style="text-decoration:none;color:inherit;">
-          <i class="fa-solid fa-arrow-left"></i> <span>Shartnomaga qaytish</span>
+          <i class="fa-solid fa-arrow-left"></i> <span>Back to contract</span>
         </a>
         <button class="btn-apply-sejda" id="btn-save-contract" type="button" style="padding:7px 14px;font-size:13px;">
-          Shartnomaga saqlash <i class="fa-solid fa-floppy-disk" style="font-size:13px;"></i>
+          Save to contract <i class="fa-solid fa-floppy-disk" style="font-size:13px;"></i>
         </button>
       </div>
     </div>
@@ -616,16 +700,16 @@
           <i class="fa-solid fa-i-cursor"></i><i class="fa-solid fa-font" style="font-size:11px;margin-left:-3px;"></i> Text
         </button>
         <button class="s-tool" data-tool="line">
-          <i class="fa-solid fa-minus"></i> Lines (Chiziq)
+          <i class="fa-solid fa-minus"></i> Lines
         </button>
         <button class="s-tool" data-tool="whiteout">
           <i class="fa-solid fa-eraser"></i> Whiteout
         </button>
         <button class="s-tool" data-tool="check">
-          <i class="fa-regular fa-square-check"></i> Forms (✓)
+          <i class="fa-regular fa-square-check"></i> Check
         </button>
         <button class="s-tool" data-tool="cross">
-          <i class="fa-solid fa-xmark"></i> Forms (✕)
+          <i class="fa-solid fa-xmark"></i> Cross
         </button>
         <button class="s-tool" data-tool="field">
           <i class="fa-solid fa-pen-to-square"></i> Field
@@ -645,10 +729,10 @@
         <button class="s-tool" data-tool="shape">
           <i class="fa-solid fa-shapes"></i> Shapes
         </button>
-        <button class="s-tool" id="btn-undo" title="Oxirgi o‘zgarishni bekor qilish (matn, imzo yoki sana)">
+        <button class="s-tool" id="btn-undo" title="Undo the last change (text, signature or date)">
           <i class="fa-solid fa-rotate-left"></i> Undo
         </button>
-        <button class="s-tool" id="btn-redo" title="Bekor qilinganini qaytarish">
+        <button class="s-tool" id="btn-redo" title="Redo">
           <i class="fa-solid fa-rotate-right"></i> Redo
         </button>
       </div>
@@ -668,13 +752,13 @@
   <div class="modal-bg" id="sig-modal">
     <div class="modal-card">
       <div style="display:flex; justify-content:space-between; align-items:center; font-weight:600;">
-        <span>Imzongizni chizing</span>
+        <span>Draw your signature</span>
         <button id="sig-close" style="border:none; background:none; cursor:pointer; font-size:16px;"><i class="fa-solid fa-xmark"></i></button>
       </div>
       <canvas id="sig-pad" width="390" height="150"></canvas>
       <div style="display:flex; justify-content:flex-end; gap:8px;">
-        <button class="action-chip" id="sig-clear">Tozalash</button>
-        <button class="btn-apply-sejda" id="sig-use" style="padding:7px 16px; font-size:13px;">Imzoni tanlash</button>
+        <button class="action-chip" id="sig-clear">Clear</button>
+        <button class="btn-apply-sejda" id="sig-use" style="padding:7px 16px; font-size:13px;">Use signature</button>
       </div>
     </div>
   </div>
@@ -705,6 +789,7 @@
   <script src="js/surgeon.js"></script>
   <script src="js/contract-source.js"></script>
   <script src="js/text-ops.js"></script>
+  <script src="js/markup-bridge.js"></script>
   <script src="js/sign-overlays.js"></script>
   <script src="js/engine.js"></script>
 

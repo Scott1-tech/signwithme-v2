@@ -38,9 +38,9 @@
           e.stopPropagation();
         };
         bar.innerHTML = `
-          <button class="f-btn" data-cmd="bold" title="Qalin (Bold)"><i class="fa-solid fa-bold"></i></button>
-          <button class="f-btn" data-cmd="italic" title="Yotiq (Italic)"><i class="fa-solid fa-italic"></i></button>
-          <button class="f-btn" data-cmd="move" title="Joyini surish (Ushlab torting)"><i class="fa-solid fa-arrows-up-down-left-right"></i></button>
+          <button class="f-btn" data-cmd="bold" title="Bold"><i class="fa-solid fa-bold"></i></button>
+          <button class="f-btn" data-cmd="italic" title="Italic"><i class="fa-solid fa-italic"></i></button>
+          <button class="f-btn" data-cmd="move" title="Move (drag)"><i class="fa-solid fa-arrows-up-down-left-right"></i></button>
           <div class="f-sep"></div>
           <button class="f-btn" data-cmd="dec"><i class="fa-solid fa-minus"></i></button>
           <input type="number" data-cmd="size" value="11" min="5" max="72" style="width:42px;text-align:center;border:1px solid #cbd5e1;border-radius:3px;padding:2px;" />
@@ -51,22 +51,45 @@
             <option value="Helvetica, Arial, sans-serif">Helvetica / Arial</option>
             <option value="Courier New, monospace">Courier New</option>
           </select>
-          <input type="color" data-cmd="color" value="#000000" title="Matn / Chiziq rangi" style="width:22px;height:22px;border:none;background:none;cursor:pointer;" />
+          <input type="color" data-cmd="color" value="#000000" title="Text / line colour" style="width:22px;height:22px;border:none;background:none;cursor:pointer;" />
           <div class="f-sep" id="line-tools-sep" style="display:none;"></div>
-          <button class="f-btn" data-cmd="line-shorter" id="btn-line-shorter" style="display:none;" title="Chiziqni qisqartirish">
+          <button class="f-btn" data-cmd="line-shorter" id="btn-line-shorter" style="display:none;" title="Shorten the line">
             <i class="fa-solid fa-compress"></i> -Uzunlik
           </button>
-          <button class="f-btn" data-cmd="line-longer" id="btn-line-longer" style="display:none;" title="Chiziqni uzaytirish">
+          <button class="f-btn" data-cmd="line-longer" id="btn-line-longer" style="display:none;" title="Lengthen the line">
             <i class="fa-solid fa-expand"></i> +Uzunlik
           </button>
-          <button class="f-btn" data-cmd="toggle-line" id="btn-toggle-line" style="display:none;color:#0956a6;" title="Tagidagi chiziqni yoqish/o'chirish">
+          <button class="f-btn" data-cmd="toggle-line" id="btn-toggle-line" style="display:none;color:#0956a6;" title="Show / hide the line">
             <i class="fa-solid fa-underline"></i> Chiziq
           </button>
           <div class="f-sep"></div>
-          <button class="f-btn" data-cmd="delete" style="color:#dc2626;" title="Butunlay o'chirish"><i class="fa-regular fa-trash-can"></i></button>
+          <button class="f-btn" data-cmd="delete" style="color:#dc2626;" title="Delete"><i class="fa-regular fa-trash-can"></i></button>
+          <div class="f-sep"></div>
+          <button class="f-btn" data-cmd="close" title="Close (Esc)"><i class="fa-solid fa-xmark"></i></button>
         `;
         document.body.appendChild(bar);
         this.textBar = bar;
+
+        // The bar goes away when the work is done: its ✕, Esc, or a click / Tab
+        // that leaves the text (but not a click on the bar's own controls).
+        const closeBar = () => {
+          if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
+          this.deselectAll();
+        };
+        bar.querySelector('[data-cmd="close"]').onclick = closeBar;
+        document.addEventListener('keydown', (e) => {
+          if (e.key === 'Escape' && bar.classList.contains('visible')) closeBar();
+        });
+        document.addEventListener('focusout', (e) => {
+          if (!e.target.closest || !e.target.closest('.dom-layer')) return;
+          setTimeout(() => {
+            const active = document.activeElement;
+            if (this.barDragging) return;
+            if (active && (bar.contains(active) || (active.closest && active.closest('.dom-layer')))) return;
+            if (document.querySelector('.sejda-editable-line.selected, .added-obj.selected')) return;
+            bar.classList.remove('visible');
+          }, 0);
+        });
 
         bar.querySelector('[data-cmd="bold"]').onclick = () => this._toggleFormat('bold');
         bar.querySelector('[data-cmd="italic"]').onclick = () => this._toggleFormat('italic');
@@ -94,42 +117,95 @@
           );
         };
 
-        const moveBtn = bar.querySelector('[data-cmd="move"]');
-        moveBtn.onmousedown = (e) => {
+        bar.querySelector('[data-cmd="move"]').onmousedown = (e) => {
           if (!this.focusedNode) return;
-          e.preventDefault();
-          e.stopPropagation();
-          const target =
-            this.focusedNode.closest('.sejda-editable-line') ||
-            this.focusedNode.closest('.added-obj') ||
-            this.focusedNode;
-          const pageStage = target.closest('.pdf-stage');
-          const pageState = this.pages.find(p => p.stage === pageStage) || this.pages[0];
-          const sc = pageState ? pageState.scale : 1.35;
-
-          const sx = e.clientX, sy = e.clientY;
-          const sl = parseFloat(target.style.left) || 0;
-          const st = parseFloat(target.style.top) || 0;
-
-          const onMove = (ev) => {
-            const nl = sl + (ev.clientX - sx);
-            const nt = st + (ev.clientY - sy);
-            target.style.left = `${nl}px`;
-            target.style.top = `${nt}px`;
-            if (target.classList.contains('sejda-line')) {
-              target.dataset.dx = ((nl - parseFloat(target.dataset.initLeft)) / sc).toFixed(2);
-              target.dataset.dy = ((nt - parseFloat(target.dataset.initTop)) / sc).toFixed(2);
-              this._recordModification(target);
-            }
-            this._positionBar(this.textBar, target);
-          };
-          const onUp = () => {
-            window.removeEventListener('mousemove', onMove);
-            window.removeEventListener('mouseup', onUp);
-          };
-          window.addEventListener('mousemove', onMove);
-          window.addEventListener('mouseup', onUp);
+          this._startMove(e, this._moveTarget());
         };
+
+        // A grip right next to the text being edited: drag it to move the text
+        // (the bar's own ✥ does the same). It shows and hides with the bar.
+        const grip = document.createElement('div');
+        grip.className = 'line-grip';
+        grip.title = 'Drag to move';
+        grip.innerHTML = '<i class="fa-solid fa-grip-vertical"></i>';
+        grip.addEventListener('mousedown', (e) => {
+          if (!this.focusedNode) return;
+          this._startMove(e, this._moveTarget());
+        });
+        document.body.appendChild(grip);
+        this.grip = grip;
+        new MutationObserver(() => {
+          if (!bar.classList.contains('visible')) grip.classList.remove('visible');
+        }).observe(bar, { attributes: true, attributeFilter: ['class'] });
+
+        // The bar and the grip are fixed on screen: they follow the text when the pages scroll.
+        window.addEventListener('scroll', () => {
+          if (this.barDragging || !bar.classList.contains('visible')) return;
+          if (this.barTarget && this.barTarget.isConnected) this._positionBar(bar, this.barTarget);
+        }, { capture: true, passive: true });
+
+        // Enter ends the edit of a line (a line of the PDF is one line): the bar goes away.
+        document.addEventListener('keydown', (e) => {
+          if (e.key !== 'Enter' || e.shiftKey) return;
+          const target = e.target;
+          if (!target.classList || !['sejda-line', 'line-text-input', 'added-text-editor'].some((name) => target.classList.contains(name))) return;
+          e.preventDefault();
+          target.blur();
+          this.deselectAll();
+        });
+      }
+
+      // The element a move takes: the line widget, the added object, or the text line itself.
+      _moveTarget() {
+        return this.focusedNode.closest('.sejda-editable-line')
+          || this.focusedNode.closest('.added-obj')
+          || this.focusedNode;
+      }
+
+      _startMove(e, target) {
+        e.preventDefault();
+        e.stopPropagation();
+        const bar = this.textBar;
+        const grip = this.grip;
+        const pageStage = target.closest('.pdf-stage');
+        const pageState = this.pages.find(p => p.stage === pageStage) || this.pages[0];
+        const sc = pageState ? pageState.scale : 1.35;
+        const sx = e.clientX, sy = e.clientY;
+        const sl = parseFloat(target.style.left) || 0;
+        const st = parseFloat(target.style.top) || 0;
+        // While dragging, the bar and the grip travel with the pointer instead
+        // of jumping onto the text that is being moved.
+        const barLeft = parseFloat(bar.style.left) || 0;
+        const barTop = parseFloat(bar.style.top) || 0;
+        const gripLeft = parseFloat(grip.style.left) || 0;
+        const gripTop = parseFloat(grip.style.top) || 0;
+        this.barDragging = true;
+        document.body.classList.add('moving-text');
+
+        const onMove = (ev) => {
+          const nl = sl + (ev.clientX - sx);
+          const nt = st + (ev.clientY - sy);
+          target.style.left = `${nl}px`;
+          target.style.top = `${nt}px`;
+          if (target.classList.contains('sejda-line')) {
+            target.dataset.dx = ((nl - parseFloat(target.dataset.initLeft)) / sc).toFixed(2);
+            target.dataset.dy = ((nt - parseFloat(target.dataset.initTop)) / sc).toFixed(2);
+            this._recordModification(target);
+          }
+          bar.style.left = `${barLeft + (ev.clientX - sx)}px`;
+          bar.style.top = `${barTop + (ev.clientY - sy)}px`;
+          grip.style.left = `${gripLeft + (ev.clientX - sx)}px`;
+          grip.style.top = `${gripTop + (ev.clientY - sy)}px`;
+        };
+        const onUp = () => {
+          window.removeEventListener('mousemove', onMove);
+          window.removeEventListener('mouseup', onUp);
+          this.barDragging = false;
+          document.body.classList.remove('moving-text');
+          this._positionBar(this.textBar, target);
+        };
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onUp);
       }
 
       _buildBoxFloatingBar() {
@@ -137,7 +213,7 @@
         bar.className = 'sejda-floating-bar';
         bar.onmousedown = (e) => e.stopPropagation();
         bar.innerHTML = `
-          <label class="f-btn" title="Fon rangi">
+          <label class="f-btn" title="Fill colour">
             <i class="fa-solid fa-fill-drip"></i> Fon:
             <input type="color" data-box="fill" value="#ffffff" style="width:22px;height:20px;border:1px solid #cbd5e1;cursor:pointer;" />
           </label>
@@ -243,10 +319,50 @@
         this.registry = new Map();
         this.overlaySeq = 0;
         this.structureChanged = false;
+        this.pendingMarkup = new Map();
+
+        // A page is drawn when it comes near the screen, not all at once: a
+        // 40-page contract opens as fast as a 2-page one and holds bitmaps
+        // only for the pages that were looked at.
+        if (this.lazyObserver) this.lazyObserver.disconnect();
+        this.lazyObserver = new IntersectionObserver((entries) => {
+          entries.forEach((entry) => {
+            if (!entry.isIntersecting) return;
+            const state = this.pages.find((page) => page.stage === entry.target);
+            if (state) this._ensureRendered(state);
+          });
+        }, { rootMargin: '900px 0px' });
 
         for (let i = 1; i <= this.pdfDoc.numPages; i++) {
           await this._buildPage(i);
         }
+        // The first pages are on screen at once.
+        await Promise.all(this.pages.slice(0, 2).map((state) => this._ensureRendered(state)));
+      }
+
+      /** Draws a page the first time it is needed, then shows its saved marks. */
+      async _ensureRendered(state) {
+        if (state.rendered) return;
+        if (state.rendering) return state.rendering;
+        state.rendering = (async () => {
+          await this._renderStage(state, true);
+          const pending = this.pendingMarkup && this.pendingMarkup.get(state.pageIndex);
+          if (pending) {
+            this.pendingMarkup.delete(state.pageIndex);
+            this.restorePageMarkup(state, pending);
+          }
+        })();
+        try {
+          await state.rendering;
+        } finally {
+          state.rendering = null;
+        }
+      }
+
+      /** Saved marks for a page: shown now if it is drawn, else when it is. */
+      showPageMarkup(state, elements) {
+        if (state.rendered) this.restorePageMarkup(state, elements);
+        else if (elements && elements.length) this.pendingMarkup.set(state.pageIndex, elements);
       }
 
       /**
@@ -257,7 +373,9 @@
        *    Canvas'ga chizmasdan, ularni jonli .sejda-editable-line obyektlariga aylantiradi!
        * 3. Barcha kichik kvadrat Checkboxlarni (☐) ushlab qolib, jonli Checkboxga aylantiradi!
        */
-      async _renderDeconstructedBinaryCanvas(pdfPage, canvas, viewport, scale) {
+      async _renderDeconstructedBinaryCanvas(pdfPage, canvas, viewport, scale, passThrough = false) {
+        // passThrough: the page is drawn exactly as the PDF has it (text and
+        // rules included); the hooks below only record where things are.
         const ctx = canvas.getContext('2d');
         const interceptedLines = [];
         const interceptedBoxes = [];
@@ -301,10 +419,12 @@
             y: m.f,
             color: ctx.fillStyle
           });
-          // origFillText chaqirilmaydi! Canvas 100% matndan toza bo'ladi!
+          if (passThrough) return origFillText.apply(this, arguments);
         };
 
-        ctx.strokeText = function() {};
+        ctx.strokeText = function() {
+          if (passThrough) return origStrokeText.apply(this, arguments);
+        };
 
         // 2. Vektor chiziqlar va Checkbox kvadratlarni ushlab qolamiz!
         ctx.beginPath = function() {
@@ -344,7 +464,7 @@
               w: sw,
               color: typeof ctx.fillStyle === 'string' ? ctx.fillStyle : '#1e293b'
             });
-            return; // Canvas'ga chizmaymiz!
+            if (!passThrough) return; // Canvas'ga chizmaymiz!
           }
           return origFillRect.apply(this, arguments);
         };
@@ -381,6 +501,7 @@
                 w,
                 color: typeof ctx.strokeStyle === 'string' ? ctx.strokeStyle : '#1e293b'
               });
+              if (passThrough) return origStroke.apply(this, arguments);
               origBeginPath.call(this);
               resetPathBounds();
               return; // Canvas'ga chizmaymiz!
@@ -405,6 +526,7 @@
                 w,
                 color: typeof ctx.fillStyle === 'string' ? ctx.fillStyle : '#1e293b'
               });
+              if (passThrough) return origFill.apply(this, arguments);
               origBeginPath.call(this);
               resetPathBounds();
               return; // Canvas'ga chizmaymiz!
@@ -437,7 +559,8 @@
           pageNum,
           pageIndex: pageNum - 1,
           scale: this.defaultScale,
-          rotation: 0,
+          // The page's own /Rotate: it is shown as the file shows it.
+          rotation: ((pdfPage.rotate || 0) % 360 + 360) % 360,
           pdfPage
         };
         this.pages.push(state);
@@ -447,11 +570,11 @@
         bar.innerHTML = `
           <span class="page-num-badge">${pageNum}</span>
           <div class="page-ctrl-group">
-            <button data-act="del" title="Sahifani o'chirish"><i class="fa-regular fa-trash-can"></i></button>
-            <button data-act="zin" title="Yaqinlashtirish"><i class="fa-solid fa-magnifying-glass-plus"></i></button>
-            <button data-act="zout" title="Uzoqlashtirish"><i class="fa-solid fa-magnifying-glass-minus"></i></button>
-            <button data-act="rccw" title="Chapga burish"><i class="fa-solid fa-rotate-left"></i></button>
-            <button data-act="rcw" title="O'ngga burish"><i class="fa-solid fa-rotate-right"></i></button>
+            <button data-act="del" title="Delete page"><i class="fa-regular fa-trash-can"></i></button>
+            <button data-act="zin" title="Zoom in"><i class="fa-solid fa-magnifying-glass-plus"></i></button>
+            <button data-act="zout" title="Zoom out"><i class="fa-solid fa-magnifying-glass-minus"></i></button>
+            <button data-act="rccw" title="Turn left"><i class="fa-solid fa-rotate-left"></i></button>
+            <button data-act="rcw" title="Turn right"><i class="fa-solid fa-rotate-right"></i></button>
           </div>
           <button class="action-chip" data-act="ins" style="color:#2563eb;">
             <i class="fa-solid fa-circle-plus"></i> Insert page here
@@ -470,19 +593,33 @@
         const domLayer = document.createElement('div');
         domLayer.className = 'dom-layer';
 
-        stage.append(vectorCanvas, annotCanvas, domLayer);
+        // Pieces of the page WITHOUT its text, shown under a line that is being changed.
+        const patchLayer = document.createElement('div');
+        patchLayer.className = 'patch-layer';
+
+        stage.append(vectorCanvas, patchLayer, annotCanvas, domLayer);
         this.root.append(bar, stage);
 
         state.stage = stage;
         state.vectorCanvas = vectorCanvas;
         state.annotCanvas = annotCanvas;
         state.domLayer = domLayer;
+        state.patchLayer = patchLayer;
+        this._watchReveal(state);
 
-        await this._renderStage(state, true);
+        // Sized now, drawn when it comes near the screen (`_ensureRendered`).
+        const viewport = pdfPage.getViewport({ scale: state.scale, rotation: state.rotation });
+        state.viewport = viewport;
+        stage.style.width = `${viewport.width}px`;
+        stage.style.height = `${viewport.height}px`;
+        stage.classList.add('page-not-drawn');
         this._attachStageEvents(state, bar);
+        this.lazyObserver.observe(stage);
       }
 
       async _renderStage(state, rebuildDom = false) {
+        state.rendered = true;
+        state.stage.classList.remove('page-not-drawn');
         const viewport = state.pdfPage.getViewport({ scale: state.scale, rotation: state.rotation });
         state.viewport = viewport;
 
@@ -496,8 +633,14 @@
             state.pdfPage,
             state.vectorCanvas,
             viewport,
-            state.scale
+            state.scale,
+            true
           );
+        // The text-free copy belongs to the old size; it is drawn again when needed.
+        state.cleanCanvas = null;
+        state.cleanPending = null;
+        state.patchSig = null;
+        state.renderSeq = (state.renderSeq || 0) + 1;
 
         if (rebuildDom) {
           state.annotCanvas.width = viewport.width;
@@ -540,6 +683,142 @@
         }
         // The signatures and dates placed in the app, at this page's new size.
         if (window.SignOverlays) window.SignOverlays.draw(state);
+        this._syncReveal(state);
+      }
+
+      /*
+       * THE PAGE STAYS AS THE PDF HAS IT. The canvas shows the original page;
+       * every line of text has an invisible, clickable twin over it. Only a
+       * line that is being edited (or was changed, moved, restyled or erased)
+       * is "revealed": a piece of the page drawn without its text covers the
+       * original there, and the editable twin becomes visible on top of it.
+       * Everything else is the untouched original picture.
+       */
+      _watchReveal(state) {
+        let queued = false;
+        const schedule = () => {
+          if (queued) return;
+          queued = true;
+          requestAnimationFrame(() => {
+            queued = false;
+            this._syncReveal(state);
+          });
+        };
+        new MutationObserver(schedule).observe(state.domLayer, {
+          subtree: true,
+          childList: true,
+          characterData: true,
+          attributes: true,
+          attributeFilter: ['style', 'class'],
+        });
+        state.domLayer.addEventListener('focusin', schedule);
+        state.domLayer.addEventListener('focusout', schedule);
+        // The text-free copy is prepared as soon as the pointer is over the page.
+        state.stage.addEventListener('mouseenter', () => this._ensureCleanCanvas(state), { passive: true });
+      }
+
+      _styleSignature(el) {
+        return [el.style.fontSize, el.style.fontFamily, el.style.fontWeight, el.style.fontStyle, el.style.color].join('|');
+      }
+
+      // Is this registered piece different from the original page (or being edited)?
+      _isTouched(entry) {
+        const el = entry.el;
+        if (!el.isConnected) return true;
+        if (entry.kind === 'checkbox' || entry.kind === 'added') return false;
+        if (entry.kind === 'line') {
+          if (document.activeElement === el) return true;
+          if (el.textContent !== entry.origText) return true;
+          if (Math.abs(parseFloat(el.dataset.dx) || 0) > 0.001 || Math.abs(parseFloat(el.dataset.dy) || 0) > 0.001) return true;
+          if (Math.abs((parseFloat(el.style.left) || 0) - entry.px.x) > 0.5) return true;
+          if (Math.abs((parseFloat(el.style.top) || 0) - entry.px.top) > 0.5) return true;
+          if (entry.styleSig === undefined) entry.styleSig = this._styleSignature(el);
+          return this._styleSignature(el) !== entry.styleSig;
+        }
+        return el.classList.contains('line-hidden') || this._geometryChanged(entry);
+      }
+
+      // The part of the original picture this piece occupies, in canvas pixels.
+      _patchRect(entry, scale) {
+        const { x, top, w, h } = entry.px;
+        if (entry.kind === 'line') return { x: x - 2, y: top - h * 0.12, w: w + 4, h: h * 1.3 };
+        if (entry.kind === 'vector') return { x: x - 1, y: top + h - 2 - 3 * scale, w: w + 2, h: 6 * scale };
+        return { x: x - 1, y: top, w: w + 2, h: h * 1.35 };
+      }
+
+      // The page drawn without its text and rules, made once per size, only when a line is touched.
+      _ensureCleanCanvas(state) {
+        if (state.cleanCanvas || state.cleanPending || !state.viewport) return state.cleanPending || null;
+        const seq = state.renderSeq;
+        const canvas = document.createElement('canvas');
+        canvas.width = state.vectorCanvas.width;
+        canvas.height = state.vectorCanvas.height;
+        state.cleanPending = this._renderDeconstructedBinaryCanvas(state.pdfPage, canvas, state.viewport, state.scale)
+          .then(() => {
+            if (state.renderSeq !== seq) return;
+            state.cleanCanvas = canvas;
+            state.cleanPending = null;
+            this._syncReveal(state);
+          })
+          .catch(() => {
+            if (state.renderSeq === seq) state.cleanPending = null;
+          });
+        return state.cleanPending;
+      }
+
+      _syncReveal(state) {
+        if (!state.patchLayer || !this.registry) return;
+        const touched = [];
+        const pristine = [];
+        for (const entry of this.registry.values()) {
+          if (entry.state !== state) continue;
+          if (entry.kind === 'checkbox') continue;
+          if (entry.kind === 'added') {
+            entry.el.classList.add('revealed');
+          } else if (this._isTouched(entry)) {
+            touched.push(entry);
+          } else {
+            pristine.push(entry);
+          }
+        }
+        pristine.forEach((entry) => entry.el.classList.remove('revealed'));
+        if (touched.length === 0) {
+          if (state.patchSig !== '') {
+            state.patchLayer.innerHTML = '';
+            state.patchSig = '';
+          }
+          return;
+        }
+        if (!state.cleanCanvas) {
+          // Not shown yet: the original stays in place until its text-free copy is ready.
+          this._ensureCleanCanvas(state);
+          return;
+        }
+        const rects = touched.map((entry) => {
+          const rect = this._patchRect(entry, state.scale);
+          const x = Math.max(0, Math.floor(rect.x));
+          const y = Math.max(0, Math.floor(rect.y));
+          const right = Math.min(state.cleanCanvas.width, Math.ceil(rect.x + rect.w));
+          const bottom = Math.min(state.cleanCanvas.height, Math.ceil(rect.y + rect.h));
+          return { x, y, w: right - x, h: bottom - y };
+        }).filter((rect) => rect.w > 0 && rect.h > 0);
+        const signature = rects.map((rect) => `${rect.x},${rect.y},${rect.w},${rect.h}`).join(';');
+        if (signature !== state.patchSig) {
+          state.patchSig = signature;
+          state.patchLayer.innerHTML = '';
+          for (const rect of rects) {
+            const patch = document.createElement('canvas');
+            patch.width = rect.w;
+            patch.height = rect.h;
+            patch.style.left = `${rect.x}px`;
+            patch.style.top = `${rect.y}px`;
+            patch.getContext('2d').drawImage(state.cleanCanvas, rect.x, rect.y, rect.w, rect.h, 0, 0, rect.w, rect.h);
+            state.patchLayer.appendChild(patch);
+          }
+        }
+        touched.forEach((entry) => {
+          if (entry.el.isConnected) entry.el.classList.add('revealed');
+        });
       }
 
       async _extractAndBuildLiveDomNodes(state, capturedGlyphColors) {
@@ -547,7 +826,6 @@
         const styles = textContent.styles || {};
         const viewport = state.viewport;
         const scale = state.scale;
-        const vCtx = state.vectorCanvas.getContext('2d');
 
         const rawSegments = [];
         const underscoreSegments = [];
@@ -615,11 +893,6 @@
             } else if (/^(\[\s*\]|[\u2610\u2611\u2612\u25A1\u25A0☐☑☒])$/.test(tokenStr.trim())) {
               const boxSize = Math.min(fontH * 0.82, 14 * scale);
               const boxY = baselineY - boxSize;
-              vCtx.save();
-              vCtx.strokeStyle = '#1e293b';
-              vCtx.lineWidth = 1.1;
-              vCtx.strokeRect(cursorX + 1, boxY, boxSize, boxSize);
-              vCtx.restore();
 
               this._createAutoCheckbox(state, cursorX, boxY - 1, boxSize + 2, boxSize + 2);
             } else if (!/^\s+$/.test(tokenStr)) {
@@ -782,11 +1055,11 @@
 
         const lhLeft = document.createElement('div');
         lhLeft.className = 'line-handle lh-left';
-        lhLeft.title = 'Chap uchini tortib chiziqni cho\'zish / qisqartirish';
+        lhLeft.title = 'Drag the end to lengthen or shorten the line';
 
         const lhRight = document.createElement('div');
         lhRight.className = 'line-handle lh-right';
-        lhRight.title = 'O\'ng uchini tortib chiziqni cho\'zish / qisqartirish';
+        lhRight.title = 'Drag the end to lengthen or shorten the line';
 
         wrap.append(lhLeft, input, lhRight);
         state.domLayer.appendChild(wrap);
@@ -863,6 +1136,10 @@
       }
 
       _createAutoCheckbox(state, x, topY, w, h) {
+        // The same box can be found twice (as a glyph and as a drawn square): one is enough.
+        const twin = [...state.domLayer.querySelectorAll('.sejda-auto-checkbox')].some((node) =>
+          Math.abs((parseFloat(node.style.left) || 0) - x) < 4 && Math.abs((parseFloat(node.style.top) || 0) - topY) < 4);
+        if (twin) return;
         const box = document.createElement('div');
         box.className = 'sejda-auto-checkbox';
         box.style.left = `${x}px`;
@@ -870,8 +1147,7 @@
         box.style.width = `${w}px`;
         box.style.height = `${h}px`;
         box.style.fontSize = `${h * 0.9}px`;
-        box.style.border = '1.2px solid #1e293b';
-        box.title = 'Belgilash uchun bosing (✓)';
+        box.title = 'Click to tick (✓)';
 
         box.addEventListener('mousedown', (e) => {
           e.preventDefault();
@@ -907,6 +1183,7 @@
           state,
           pt: this._pageRect(state, x, topY, width, height),
           px: { x, top: topY, w: width, h: height },
+          styleSig: kind === 'line' ? this._styleSignature(el) : undefined,
         });
       }
 
@@ -941,7 +1218,8 @@
 
       // Changes a rebuilt page could not carry over (zoom and rotate rebuild the page).
       _hasDomOnlyChanges(state) {
-        if (state.domLayer.querySelector('.added-obj, .sejda-box-item')) return true;
+        // Added text, ✓ / ✕ and whiteout are carried over (`collectPageMarkup`); anything else is not.
+        if (state.domLayer.querySelector('.added-obj:not([data-type="added-text"]):not([data-type="check"]):not([data-type="cross"]), .sejda-box-item:not([data-type="whiteout"])')) return true;
         for (const entry of (this.registry || new Map()).values()) {
           if (entry.state !== state) continue;
           if (entry.kind === 'line') {
@@ -1000,8 +1278,26 @@
           }
         }
         if (lost > 0) {
-          alert(`${lost} ta o‘zgarish sahifa qayta chizilganda tiklanmadi. Iltimos, tekshirib qayta kiriting.`);
+          alert(`${lost} change(s) could not be carried over when the page was redrawn. Please check and make them again.`);
         }
+      }
+
+      /**
+       * Page changes on a contract, saved with the text changes in one draft:
+       * a turn (absolute /Rotate), a deleted page, a blank page inserted after one.
+       */
+      pagePlan() {
+        const plan = [];
+        this.pages.forEach((state) => {
+          if (state.deleted) {
+            plan.push({ type: 'delete', pageIndex: state.pageIndex });
+            return;
+          }
+          const own = (((state.pdfPage.rotate || 0) % 360) + 360) % 360;
+          if (state.rotation !== own) plan.push({ type: 'rotate', pageIndex: state.pageIndex, rotation: state.rotation });
+          for (let n = 0; n < (state.insertsAfter || 0); n += 1) plan.push({ type: 'insert', afterIndex: state.pageIndex });
+        });
+        return plan;
       }
 
       _hasPendingChanges() {
@@ -1017,7 +1313,7 @@
       collectEdits() {
         const edits = [];
         const unsupported = [];
-        const place = (state) => `Sahifa ${state.pageIndex + 1}`;
+        const place = (state) => `Page ${state.pageIndex + 1}`;
         const change = (entry, newText, blank) => ({
           pageIndex: entry.state.pageIndex,
           ptX: entry.pt.x,
@@ -1033,42 +1329,49 @@
           const erased = !el.isConnected;
           const text = erased ? '' : entry.textEl.textContent.replace(/ /g, ' ');
           if (kind === 'checkbox') {
-            if (erased || text !== entry.origText) {
-              unsupported.push(`${place(state)}: belgi qutisini o‘zgartirish hozircha saqlanmaydi.`);
-            }
+            // ✓ / ✕ in a box is saved as markup (`collectPageMarkup`).
           } else if (kind === 'line') {
             const moved = Math.abs(parseFloat(el.dataset.dx) || 0) > 0.001
               || Math.abs(parseFloat(el.dataset.dy) || 0) > 0.001;
-            if (moved) unsupported.push(`${place(state)}: siljitilgan matn hozircha saqlanmaydi.`);
             if (erased) edits.push(change(entry, '', false));
-            else if (text !== entry.origText) edits.push(change(entry, text, false));
+            else if (moved) {
+              // A moved line is written at its new place (points; down and right are positive).
+              edits.push({
+                ...change(entry, text, false),
+                dxPt: parseFloat(el.dataset.dx) || 0,
+                dyPt: parseFloat(el.dataset.dy) || 0,
+              });
+            } else if (text !== entry.origText) edits.push(change(entry, text, false));
           } else if (kind === 'added') {
-            // A line the person added reaches the file only as text in a blank.
-            if (!erased && text.trim()) edits.push(change(entry, text.trim(), true));
+            // Text typed on it is saved as markup (`collectPageMarkup`), not here.
           } else {
             // 'underscore' is a blank in the text; 'vector' is a line drawn in the page.
             if (!erased && (el.classList.contains('line-hidden') || this._geometryChanged(entry))) {
-              unsupported.push(`${place(state)}: chiziqni yashirish yoki o‘zgartirish hozircha saqlanmaydi.`);
+              unsupported.push(`${place(state)}: hiding or changing a line cannot be saved yet.`);
             }
             if (kind === 'vector' && erased) {
-              unsupported.push(`${place(state)}: chiziqni o‘chirish hozircha saqlanmaydi.`);
+              unsupported.push(`${place(state)}: deleting a line cannot be saved yet.`);
             } else if (kind === 'underscore' && erased) {
               edits.push(change(entry, '', true));
-            } else if (!erased && text.trim()) {
-              edits.push(change(entry, text.trim(), true));
             }
+            // Text typed on a blank is saved as markup (`collectPageMarkup`), not as a text change.
           }
         }
         for (const state of this.pages) {
-          if (state.rotation) {
-            unsupported.push(`${place(state)}: sahifa burilgan — burish hozircha saqlanmaydi (0° ga qaytaring).`);
+          const turned = state.rotation !== (((state.pdfPage.rotate || 0) % 360) + 360) % 360;
+          if (turned && !this.contractMode) {
+            unsupported.push(`${place(state)}: the page is turned — turning cannot be saved here (turn it back to 0°).`);
           }
-          if (state.domLayer.querySelector('.added-obj, .sejda-box-item')) {
-            unsupported.push(`${place(state)}: qo‘shilgan matn yoki shakl hozircha saqlanmaydi.`);
+          if (turned && this.collectPageMarkup(state).length) {
+            unsupported.push(`${place(state)}: text and marks added to a turned page cannot be saved yet — save the turn first, then add them.`);
+          }
+          // Added text, ✓ / ✕ and whiteout are saved as markup; other added objects are not yet.
+          if (state.domLayer.querySelector('.added-obj:not([data-type="added-text"]):not([data-type="check"]):not([data-type="cross"]), .sejda-box-item:not([data-type="whiteout"])')) {
+            unsupported.push(`${place(state)}: this added object cannot be saved yet.`);
           }
         }
-        if (this.structureChanged) {
-          unsupported.push('Sahifalar qo‘shilgan yoki o‘chirilgan — bu hozircha saqlanmaydi.');
+        if (this.structureChanged && !this.contractMode) {
+          unsupported.push('Pages were added or deleted — this cannot be saved here.');
         }
         return { edits, unsupported: [...new Set(unsupported)] };
       }
@@ -1089,8 +1392,21 @@
       _positionBar(barEl, targetNode) {
         const r = targetNode.getBoundingClientRect();
         barEl.classList.add('visible');
-        barEl.style.top = `${Math.max(116, r.top - 44)}px`;
-        barEl.style.left = `${Math.max(12, Math.min(window.innerWidth - 520, r.left))}px`;
+        // Above the text with a clear gap; under it when there is no room
+        // above (below the header). The bar never lies on the text itself.
+        const header = document.querySelector('.top-header');
+        const floor = (header ? header.getBoundingClientRect().bottom : 0) + 6;
+        const barH = barEl.offsetHeight || 36;
+        const barW = barEl.offsetWidth || 520;
+        const above = r.top - barH - 14;
+        barEl.style.top = `${above >= floor ? above : Math.min(window.innerHeight - barH - 6, r.bottom + 14)}px`;
+        barEl.style.left = `${Math.max(12, Math.min(window.innerWidth - barW - 12, r.left))}px`;
+        if (barEl === this.textBar) this.barTarget = targetNode;
+        if (barEl === this.textBar && this.grip) {
+          this.grip.classList.add('visible');
+          this.grip.style.left = `${Math.max(2, r.left - 22)}px`;
+          this.grip.style.top = `${r.top + r.height / 2 - 11}px`;
+        }
 
         if (barEl === this.textBar && this.focusedNode) {
           barEl.querySelector('[data-cmd="bold"]').classList.toggle('active', this.focusedNode.dataset.bold === 'true');
@@ -1167,7 +1483,9 @@
 
       setTool(tool) {
         this.activeTool = tool;
-        document.body.className = `tool-${tool}`;
+        // Only the tool class changes: `embedded` and the others stay.
+        [...document.body.classList].filter((name) => name.startsWith('tool-')).forEach((name) => document.body.classList.remove(name));
+        document.body.classList.add(`tool-${tool}`);
         document.querySelectorAll('.annot-canvas').forEach(c => {
           c.classList.toggle('active', tool === 'annotate');
         });
@@ -1263,30 +1581,54 @@
           if (!btn) return;
           const act = btn.dataset.act;
           if (['zin', 'zout', 'rcw', 'rccw'].includes(act) && this._hasDomOnlyChanges(state)) {
-            alert('Bu sahifada hozircha saqlanmaydigan o‘zgarishlar bor (siljitish, yashirish yoki shakl). Ularni bekor qiling, so‘ng masshtabni yoki burilishni o‘zgartiring.');
+            alert('This page has changes that cannot be carried over (a moved line, a hidden line or a shape). Undo them, then zoom or turn the page.');
             return;
           }
           if (act === 'zin') {
             state.scale = Math.min(2.4, state.scale + 0.15);
+            const carried = this.collectPageMarkup(state);
             await this._renderStage(state, true);
+            this.restorePageMarkup(state, carried);
           } else if (act === 'zout') {
             state.scale = Math.max(0.6, state.scale - 0.15);
+            const carried = this.collectPageMarkup(state);
             await this._renderStage(state, true);
+            this.restorePageMarkup(state, carried);
           } else if (act === 'rcw') {
+            const carried = this.collectPageMarkup(state);
             state.rotation = (state.rotation + 90) % 360;
             await this._renderStage(state, true);
+            this.restorePageMarkup(state, carried);
           } else if (act === 'rccw') {
+            const carried = this.collectPageMarkup(state);
             state.rotation = (state.rotation + 270) % 360;
             await this._renderStage(state, true);
+            this.restorePageMarkup(state, carried);
+          } else if (act === 'del' && this.contractMode) {
+            if (this.pages.filter((page) => !page.deleted).length <= 1) return alert('The only page cannot be deleted.');
+            if (!confirm(`Delete page ${state.pageIndex + 1}? It is deleted when you press «Save to contract».`)) return;
+            state.deleted = true;
+            bar.classList.add('page-pending-delete');
+            state.stage.classList.add('page-pending-delete');
+            bar.querySelector('.page-num-badge').title = 'Deleted when saved';
+            this.structureChanged = true;
+            if (window.SignOverlays) window.SignOverlays.updateButtons();
+          } else if (act === 'ins' && this.contractMode) {
+            state.insertsAfter = (state.insertsAfter || 0) + 1;
+            const note = document.createElement('div');
+            note.className = 'page-pending-insert';
+            note.textContent = 'New blank page — added when you press «Save to contract»';
+            state.stage.after(note);
+            this.structureChanged = true;
           } else if (act === 'del') {
-            if (this._hasPendingChanges()) return alert('Avval matndagi o‘zgarishlarni saqlang yoki sahifani yangilang, so‘ng sahifalarni o‘zgartiring.');
+            if (this._hasPendingChanges()) return alert('Save the text changes first (or reload the page), then change the pages.');
             const doc = await PDFDocument.load(this.pdfBytes);
-            if (doc.getPageCount() <= 1) return alert('Yagona sahifani o\'chirib bo\'lmaydi.');
+            if (doc.getPageCount() <= 1) return alert('The only page cannot be deleted.');
             doc.removePage(state.pageIndex);
             await this.loadPDF(await doc.save());
             this.structureChanged = true;
           } else if (act === 'ins') {
-            if (this._hasPendingChanges()) return alert('Avval matndagi o‘zgarishlarni saqlang yoki sahifani yangilang, so‘ng sahifalarni o‘zgartiring.');
+            if (this._hasPendingChanges()) return alert('Save the text changes first (or reload the page), then change the pages.');
             const doc = await PDFDocument.load(this.pdfBytes);
             doc.insertPage(state.pageIndex, [612, 792]);
             await this.loadPDF(await doc.save());
@@ -1418,7 +1760,7 @@
               }
 
               if (this.activeTool === 'link') {
-                const url = prompt('Havola (URL) manzilini kiriting:', 'https://');
+                const url = prompt('Link address (URL):', 'https://');
                 if (!url) return;
                 const box = this._createResizableBox(state, x, y, w, h, 'link');
                 box.dataset.url = url;
@@ -1437,17 +1779,24 @@
           if (this.activeTool === 'text') {
             this._spawnNewText(state, startX, startY - 8);
           } else if (this.activeTool === 'check' || this.activeTool === 'cross') {
-            const el = this._createObjWrap(state, startX - 9, startY - 11, 20, 20, this.activeTool);
-            el.textContent = this.activeTool === 'check' ? '✓' : '✕';
-            el.style.cssText += 'display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:15px;color:#0956a6;';
+            this._spawnMark(state, this.activeTool, startX, startY, 14 * state.scale);
           } else if (this.activeTool === 'field') {
             const el = this._createObjWrap(state, startX, startY - 12, 165, 22, 'field');
             const inp = document.createElement('input');
             inp.type = 'text';
-            inp.placeholder = 'Matn kiriting...';
+            inp.placeholder = 'Type text...';
             inp.style.cssText = 'width:100%;height:100%;border:1px solid #64748b;background:rgba(241,245,249,0.85);padding:2px 6px;font-size:13px;outline:none;';
             el.appendChild(inp);
             inp.focus();
+          } else if (this.activeTool === 'sign' && editorIsEmbedded()) {
+            // On the contract page a signature is the contract's own (saved,
+            // printed at finalize): the page opens its signature dialog for
+            // this spot -- saved, drawn, uploaded or typed.
+            const at = this._pageRect(state, startX, startY, 0, 0);
+            window.parent.postMessage(
+              { type: 'editor:sign-at', page: state.pageIndex + 1, x: at.x, y: at.y },
+              window.location.origin,
+            );
           } else if (this.activeTool === 'sign' && this.pendingSignature) {
             this._spawnImage(state, startX - 65, startY - 28, this.pendingSignature, 145, 55);
           } else if (this.activeTool === 'image' && this.pendingImage) {
@@ -1456,7 +1805,7 @@
         });
       }
 
-      _createResizableBox(state, x, y, w, h, type) {
+      _createResizableBox(state, x, y, w, h, type, quiet = false) {
         const box = document.createElement('div');
         box.className = 'sejda-box-item';
         box.dataset.type = type;
@@ -1493,7 +1842,7 @@
 
         state.domLayer.appendChild(box);
         this._bindBoxDragAnd8WayResize(box);
-        this._pushUndo({ type: 'spawn', node: box });
+        if (!quiet) this._pushUndo({ type: 'spawn', node: box });
         return box;
       }
 
@@ -1559,9 +1908,9 @@
         });
       }
 
-      _createObjWrap(state, x, y, w, h, type) {
+      _createObjWrap(state, x, y, w, h, type, quiet = false) {
         const el = document.createElement('div');
-        el.className = 'added-obj selected';
+        el.className = quiet ? 'added-obj' : 'added-obj selected';
         el.dataset.type = type;
         el.style.left = `${x}px`;
         el.style.top = `${y}px`;
@@ -1570,17 +1919,232 @@
 
         state.domLayer.appendChild(el);
         this._makeAddedObjDraggable(el);
-        this._pushUndo({ type: 'spawn', node: el });
+        if (!quiet) this._pushUndo({ type: 'spawn', node: el });
         return el;
       }
 
-      _spawnNewText(state, x, y) {
-        const wrap = this._createObjWrap(state, x, y, null, null, 'added-text');
+      /* ---------------------------------------------------------------------
+       * ADDED MARKS <-> CONTRACT MARKUP (js/markup-bridge.js). What the person
+       * adds to a page is described in points and saved as the contract's
+       * markup; the same description carries the marks over a zoom.
+       * ------------------------------------------------------------------- */
+
+      _toPx(state, xPt, yPt) {
+        const view = state.pdfPage.view;
+        const p = state.viewport.convertToViewportPoint(view[0] + xPt, view[3] - yPt);
+        return { x: p[0], y: p[1] };
+      }
+
+      // Where the first line of a text element sits: its left end on the baseline, stage px.
+      _baselineOf(el, state) {
+        const probe = document.createElement('span');
+        probe.style.cssText = 'display:inline-block;width:0;height:0;vertical-align:baseline;padding:0;margin:0;';
+        el.insertBefore(probe, el.firstChild);
+        const r = probe.getBoundingClientRect();
+        probe.remove();
+        const s = state.stage.getBoundingClientRect();
+        return { x: r.left - s.left, y: r.top - s.top };
+      }
+
+      _markupIdOf(node) {
+        if (!node.dataset.markupId) node.dataset.markupId = window.MarkupBridge.newId();
+        return node.dataset.markupId;
+      }
+
+      _textElement(state, node, textEl, text) {
+        const B = window.MarkupBridge;
+        const at = this._baselineOf(textEl, state);
+        const pt = this._pageRect(state, at.x, at.y, 0, 0);
+        const element = {
+          id: this._markupIdOf(node),
+          kind: 'text',
+          x_pt: B.round(pt.x),
+          y_pt: B.round(pt.y),
+          text,
+          font: B.fontToWire(textEl.dataset.fontFamily || textEl.style.fontFamily),
+          size_pt: B.round(B.clamp(parseFloat(textEl.dataset.fontSize) || 11, 6, 48)),
+        };
+        if (textEl.dataset.bold === 'true') element.bold = true;
+        if (textEl.dataset.italic === 'true') element.italic = true;
+        const color = B.colorToWire(textEl.dataset.color || '#000000');
+        if (color !== 'black') element.color = color;
+        return element;
+      }
+
+      /** Every mark this page adds, as markup elements (no page: the caller knows it). */
+      collectPageMarkup(state) {
+        // Not drawn yet: its saved marks are still exactly as loaded.
+        if (!state.rendered) return [...((this.pendingMarkup && this.pendingMarkup.get(state.pageIndex)) || [])];
+        const B = window.MarkupBridge;
+        const out = [];
+        const clean = (value) => (value || '').replace(/\u00A0/g, ' ').replace(/\s*\n\s*/g, ' ').trim();
+        state.domLayer.querySelectorAll('.added-obj[data-type="added-text"]').forEach((wrap) => {
+          const ed = wrap.querySelector('.added-text-editor');
+          const text = ed ? clean(ed.textContent) : '';
+          if (text) out.push(this._textElement(state, wrap, ed, text.slice(0, 200)));
+        });
+        // Text typed on a blank (a rule of the page, or "____" in its text).
+        for (const entry of (this.registry || new Map()).values()) {
+          if (entry.state !== state || !entry.el.isConnected) continue;
+          if (entry.kind !== 'underscore' && entry.kind !== 'vector' && entry.kind !== 'added') continue;
+          const text = clean(entry.textEl.textContent);
+          if (text) out.push(this._textElement(state, entry.el, entry.textEl, text.slice(0, 200)));
+        }
+        const markAt = (node, cx, cy, px, kind) => {
+          const pt = this._pageRect(state, cx, cy, 0, 0);
+          out.push({
+            id: this._markupIdOf(node),
+            kind,
+            x_pt: B.round(pt.x),
+            y_pt: B.round(pt.y),
+            size_pt: B.round(B.clamp(px / state.scale * 0.75, 6, 72)),
+          });
+        };
+        state.domLayer.querySelectorAll('.added-obj[data-type="check"], .added-obj[data-type="cross"]').forEach((el) => {
+          const left = parseFloat(el.style.left) || 0;
+          const top = parseFloat(el.style.top) || 0;
+          markAt(el, left + el.offsetWidth / 2, top + el.offsetHeight / 2, Math.min(el.offsetWidth, el.offsetHeight), el.dataset.type);
+        });
+        state.domLayer.querySelectorAll('.sejda-auto-checkbox').forEach((box) => {
+          const mark = box.textContent.trim();
+          if (mark !== '✓' && mark !== '✕') return;
+          const left = parseFloat(box.style.left) || 0;
+          const top = parseFloat(box.style.top) || 0;
+          const w = parseFloat(box.style.width) || box.offsetWidth;
+          const h = parseFloat(box.style.height) || box.offsetHeight;
+          markAt(box, left + w / 2, top + h / 2, Math.min(w, h) * 1.05, mark === '✓' ? 'check' : 'cross');
+        });
+        state.domLayer.querySelectorAll('.sejda-box-item[data-type="whiteout"]').forEach((box) => {
+          const rect = this._pageRect(state, parseFloat(box.style.left) || 0, parseFloat(box.style.top) || 0, box.offsetWidth, box.offsetHeight);
+          if (rect.w < 1 || rect.h < 1) return;
+          out.push({ id: this._markupIdOf(box), kind: 'whiteout', x_pt: B.round(rect.x), y_pt: B.round(rect.y), w_pt: B.round(rect.w), h_pt: B.round(rect.h) });
+        });
+        // A mark the person did not move or change keeps the exact values it
+        // was loaded with: a zoom's rounding is not a change to save.
+        return out.map((fresh) => {
+          const node = state.domLayer.querySelector(`[data-markup-id="${fresh.id}"]`);
+          if (!node || !node.dataset.markupOrig) return fresh;
+          let original;
+          try {
+            original = JSON.parse(node.dataset.markupOrig);
+          } catch (error) {
+            return fresh;
+          }
+          const keys = new Set([...Object.keys(original), ...Object.keys(fresh)]);
+          keys.delete('page_uid');
+          for (const key of keys) {
+            const a = original[key];
+            const b = fresh[key];
+            if (typeof a === 'number' && typeof b === 'number') {
+              if (Math.abs(a - b) > 1.5) return fresh;
+            } else if (a !== b) {
+              return fresh;
+            }
+          }
+          const { page_uid: ignored, ...kept } = original;
+          return kept;
+        });
+      }
+
+      /** [{ pageIndex, element }] for every page. */
+      collectMarkup() {
+        const all = [];
+        this.pages.forEach((state) => {
+          this.collectPageMarkup(state).forEach((element) => all.push({ pageIndex: state.pageIndex, element }));
+        });
+        return all;
+      }
+
+      /** Shows saved / carried markup elements on a page as editable marks. */
+      restorePageMarkup(state, elements) {
+        const B = window.MarkupBridge;
+        for (const element of elements || []) {
+          if (element.kind === 'text') {
+            const at = this._toPx(state, element.x_pt, element.y_pt);
+            // A text on a blank goes back into that blank's input.
+            const blank = [...(this.registry || new Map()).values()].find((entry) => {
+              if (entry.state !== state || !['underscore', 'vector', 'added'].includes(entry.kind)) return false;
+              // An empty blank, or the one already showing this text (a zoom carries both ways).
+              const current = entry.textEl.textContent.trim();
+              if (current && current !== element.text) return false;
+              const r = entry.px;
+              return at.x >= r.x - 4 && at.x <= r.x + r.w && at.y >= r.top - 2 && at.y <= r.top + r.h + 6;
+            });
+            const family = B.fontFromWire(element.font);
+            const style = (el) => {
+              el.dataset.fontSize = String(element.size_pt);
+              el.dataset.fontFamily = family;
+              el.dataset.bold = element.bold ? 'true' : 'false';
+              el.dataset.italic = element.italic ? 'true' : 'false';
+              el.dataset.color = B.colorFromWire(element.color || 'black');
+              el.style.fontSize = `${element.size_pt * state.scale}px`;
+              el.style.fontFamily = family;
+              el.style.fontWeight = element.bold ? 'bold' : 'normal';
+              el.style.fontStyle = element.italic ? 'italic' : 'normal';
+              el.style.color = el.dataset.color;
+            };
+            if (blank) {
+              style(blank.textEl);
+              blank.textEl.textContent = element.text;
+              blank.el.dataset.markupId = element.id;
+              blank.el.dataset.markupOrig = JSON.stringify(element);
+              continue;
+            }
+            const wrap = this._spawnNewText(state, at.x, at.y, true);
+            const ed = wrap.querySelector('.added-text-editor');
+            style(ed);
+            ed.textContent = element.text;
+            const got = this._baselineOf(ed, state);
+            wrap.style.left = `${(parseFloat(wrap.style.left) || 0) + at.x - got.x}px`;
+            wrap.style.top = `${(parseFloat(wrap.style.top) || 0) + at.y - got.y}px`;
+            wrap.dataset.markupId = element.id;
+            wrap.dataset.markupOrig = JSON.stringify(element);
+          } else if (element.kind === 'check' || element.kind === 'cross') {
+            const at = this._toPx(state, element.x_pt, element.y_pt);
+            const glyph = element.kind === 'check' ? '✓' : '✕';
+            const box = [...state.domLayer.querySelectorAll('.sejda-auto-checkbox')].find((node) => {
+              const left = parseFloat(node.style.left) || 0;
+              const top = parseFloat(node.style.top) || 0;
+              const current = node.textContent.trim();
+              // An empty box, or the one already showing this mark (a zoom carries both ways).
+              if (current && current !== glyph) return false;
+              if (current && node.dataset.markupId && node.dataset.markupId !== element.id) return false;
+              return at.x >= left && at.x <= left + node.offsetWidth && at.y >= top && at.y <= top + node.offsetHeight;
+            });
+            if (box) {
+              box.textContent = element.kind === 'check' ? '✓' : '✕';
+              box.dataset.markupId = element.id;
+              box.dataset.markupOrig = JSON.stringify(element);
+              continue;
+            }
+            const el = this._spawnMark(state, element.kind, at.x, at.y, element.size_pt / 0.75 * state.scale, true);
+            el.dataset.markupId = element.id;
+            el.dataset.markupOrig = JSON.stringify(element);
+          } else if (element.kind === 'whiteout') {
+            const a = this._toPx(state, element.x_pt, element.y_pt);
+            const b = this._toPx(state, element.x_pt + element.w_pt, element.y_pt + element.h_pt);
+            const box = this._createResizableBox(state, Math.min(a.x, b.x), Math.min(a.y, b.y), Math.abs(b.x - a.x), Math.abs(b.y - a.y), 'whiteout', true);
+            box.dataset.markupId = element.id;
+            box.dataset.markupOrig = JSON.stringify(element);
+          }
+        }
+      }
+
+      /** A ✓ or ✕ centred on (cx, cy) px, `px` square. */
+      _spawnMark(state, kind, cx, cy, px, quiet = false) {
+        const el = this._createObjWrap(state, cx - px / 2, cy - px / 2, px, px, kind, quiet);
+        el.textContent = kind === 'check' ? '✓' : '✕';
+        el.style.cssText += `display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:${px * 0.8}px;line-height:1;color:#0956a6;`;
+        return el;
+      }
+
+      _spawnNewText(state, x, y, quiet = false) {
+        const wrap = this._createObjWrap(state, x, y, null, null, 'added-text', quiet);
         const ed = document.createElement('div');
         ed.className = 'added-text-editor';
         ed.contentEditable = 'true';
         ed.spellcheck = false;
-        ed.dataset.placeholder = 'Matn yozing...';
+        ed.dataset.placeholder = 'Type text...';
         ed.style.fontSize = `${10.5 * state.scale}px`;
         ed.style.fontFamily = 'Times New Roman, Times, serif';
         ed.dataset.fontSize = '10.5';
@@ -1598,7 +2162,8 @@
           this._positionBar(this.textBar, ed);
         });
 
-        ed.focus();
+        if (!quiet) ed.focus();
+        return wrap;
       }
 
       _spawnImage(state, x, y, src, w, h) {
@@ -1971,7 +2536,10 @@
       const statusLine = document.getElementById('editor-status');
       if (contractId) document.getElementById('back-link').href = `/contracts/${contractId}`;
       // Inside the review panel there is nothing to go back to: hide the link.
-      if (editorIsEmbedded()) document.getElementById('back-link').style.display = 'none';
+      if (editorIsEmbedded()) {
+        document.getElementById('back-link').style.display = 'none';
+        document.body.classList.add('embedded');
+      }
       document.getElementById('back-link').addEventListener('click', (event) => {
         // Inside the contract page, «back» closes the editor there instead of leaving the page.
         if (editorIsEmbedded()) {
@@ -1980,32 +2548,72 @@
         }
       });
       let baseVersionNo = null; // the version the editor works on; a save builds on it
+      // The contract's saved markup the editor shows (and replaces on save).
+      let markupTaken = new Set();
+      let markupShown = '[]';
+      const showContractMarkup = async () => {
+        markupTaken = new Set();
+        try {
+          const [uidByIndex, saved] = await Promise.all([
+            pageUidsOf(contractId, baseVersionNo),
+            loadContractMarkup(contractId),
+          ]);
+          const { byPage, taken } = window.MarkupBridge.splitForPages(saved.elements, uidByIndex);
+          markupTaken = taken;
+          engine.pages.forEach((state) => engine.showPageMarkup(state, byPage.get(state.pageIndex) || []));
+        } catch (error) {
+          statusLine.textContent = 'The added text and marks could not be loaded.';
+        }
+        markupShown = window.MarkupBridge.signature(engine.collectMarkup());
+      };
       try {
         if (contractId) {
-          statusLine.textContent = 'Shartnoma yuklanmoqda…';
+          statusLine.textContent = 'Loading the contract…';
           const loaded = await loadContractVersion(contractId);
           baseVersionNo = loaded.versionNo;
           await engine.loadPDF(loaded.bytes);
-          statusLine.textContent = `Versiya ${baseVersionNo} ochildi.`;
+          await showContractMarkup();
+          statusLine.textContent = `Version ${baseVersionNo}.`;
         } else {
           await engine.loadPDF(await buildBinarySamplePdf());
-          statusLine.textContent = 'Namuna hujjat. Shartnomani tahrirlash uchun shartnoma sahifasidagi «Edit PDF» tugmasini bosing.';
+          statusLine.textContent = 'Sample document. Open a contract from the dashboard to edit it.';
         }
       } catch (error) {
-        statusLine.textContent = error instanceof Error ? error.message : 'PDF yuklanmadi.';
+        statusLine.textContent = error instanceof Error ? error.message : 'The PDF could not be loaded.';
       }
       buildPageList(engine).catch(() => {});
       // Ask the contract page for its signatures and dates, now that the pages exist.
       if (window.SignOverlays) window.SignOverlays.ready();
 
+      // On a contract only text edits are written into the file so far. A tool
+      // whose work the save would refuse is switched off here, instead of
+      // letting the person do the work and lose it at «Saqlash».
+      const NOT_SAVED = 'Cannot be saved to the contract yet';
+      if (contractId) {
+        document.querySelectorAll('#main-toolbar .s-tool[data-tool]').forEach((btn) => {
+          if (['text', 'check', 'cross', 'whiteout'].includes(btn.dataset.tool)) return;
+          if (btn.dataset.tool === 'sign' && editorIsEmbedded()) return;
+          btn.classList.add('not-saved');
+          btn.setAttribute('aria-disabled', 'true');
+          btn.title = NOT_SAVED;
+        });
+        engine.contractMode = true;
+      }
+
       document.querySelectorAll('#main-toolbar .s-tool[data-tool]').forEach(btn => {
         btn.onclick = () => {
+          if (btn.classList.contains('not-saved')) {
+            statusLine.textContent = `«${btn.textContent.trim()}»: ${NOT_SAVED.toLowerCase()}.`;
+            return;
+          }
           document.querySelectorAll('#main-toolbar .s-tool').forEach(b => b.classList.remove('active'));
           btn.classList.add('active');
           const tool = btn.dataset.tool;
           engine.setTool(tool);
 
-          if (tool === 'sign') document.getElementById('sig-modal').classList.add('open');
+          if (tool === 'sign' && contractId && editorIsEmbedded()) {
+            statusLine.textContent = 'Click the page where the signature goes.';
+          } else if (tool === 'sign') document.getElementById('sig-modal').classList.add('open');
           if (tool === 'image') document.getElementById('img-upload').click();
         };
       });
@@ -2058,47 +2666,74 @@
         saveButton.disabled = busy;
         if (text) statusLine.textContent = text;
       };
+      // After a save: the file and the markup the server now holds, so the next edits build on them.
+      const showSaved = async (note) => {
+        const loaded = await loadContractVersion(contractId);
+        baseVersionNo = loaded.versionNo;
+        await engine.loadPDF(loaded.bytes);
+        await showContractMarkup();
+        statusLine.textContent = note;
+        notifyContractPage('editor:saved');
+        buildPageList(engine).catch(() => {});
+        if (window.SignOverlays) window.SignOverlays.drawAll();
+      };
+
       saveButton.onclick = async () => {
         if (!contractId || baseVersionNo === null || !engine.pdfBytes) {
-          statusLine.textContent = 'Shartnoma hali yuklanmadi.';
+          statusLine.textContent = 'The contract has not loaded yet.';
           return;
         }
         // Only the lines that changed are written; the rest of the file stays as it is.
         const plan = engine.collectEdits();
         if (plan.unsupported.length) {
-          statusLine.textContent = `Saqlanmadi: ${plan.unsupported.join(' ')}`;
+          statusLine.textContent = `Not saved: ${plan.unsupported.join(' ')}`;
           return;
         }
-        if (!plan.edits.length) {
-          statusLine.textContent = 'O‘zgarish yo‘q.';
+        const marks = engine.collectMarkup();
+        const marksChanged = window.MarkupBridge.signature(marks) !== markupShown;
+        const pages = engine.pagePlan();
+        if (!plan.edits.length && !marksChanged && !pages.length) {
+          statusLine.textContent = 'No changes.';
           return;
         }
-        setBusy(true, 'Saqlanmoqda…');
+        setBusy(true, 'Saving…');
         try {
-          const result = await saveEditsToContract(contractId, baseVersionNo, plan.edits, {
+          // Page uids of the version being edited: marks name their page by it (kept across versions).
+          const baseUids = await pageUidsOf(contractId, baseVersionNo);
+          if (!plan.edits.length && !pages.length) {
+            // Only added text / marks: they are the contract's markup, the PDF itself stays as it is.
+            await saveContractMarkup(contractId, baseUids, marks, markupTaken);
+            await showSaved('Saved: added text and marks.');
+            return;
+          }
+          const result = await saveEditsToContract(contractId, baseVersionNo, plan.edits.filter((edit) => !(engine.pages[edit.pageIndex] || {}).deleted), {
+            pages,
             confirmSignatures: (count) => window.confirm(
-              `Bu shartnomada ${count} ta imzo bor. Hujjat o‘zgargani uchun ular o‘chiriladi va shartnoma qayta imzolanadi. Davom etamizmi?`,
+              `This contract has ${count} signature(s). Because the document changes, they will be removed and the contract must be signed again. Continue?`,
             ),
           });
           if (result.status === 'blocked') {
-            statusLine.textContent = `Saqlanmadi: ${result.messages.join(' ')}`;
+            statusLine.textContent = `Not saved: ${result.messages.join(' ')}`;
             return;
           }
           if (result.status === 'nothing') {
-            statusLine.textContent = 'O‘zgarish yo‘q.';
+            statusLine.textContent = 'No changes.';
             return;
           }
           if (result.status === 'cancelled') {
-            statusLine.textContent = 'Saqlanmadi: imzolar o‘chirilishi bekor qilindi.';
+            statusLine.textContent = 'Not saved: removing the signatures was cancelled.';
             return;
           }
-          // Show the file the server now holds, so the next edits build on it.
-          const loaded = await loadContractVersion(contractId);
-          await engine.loadPDF(loaded.bytes);
-          baseVersionNo = loaded.versionNo;
-          statusLine.textContent = describeSavedVersion(result.version);
-          notifyContractPage('editor:saved');
-          buildPageList(engine).catch(() => {});
+          baseVersionNo = result.version.version.version_no;
+          let note = describeSavedVersion(result.version);
+          if (marksChanged) {
+            try {
+              await saveContractMarkup(contractId, baseUids, marks.filter((mark) => !(engine.pages[mark.pageIndex] || {}).deleted), markupTaken);
+            } catch (error) {
+              note += ` The added text and marks were not saved: ${describeSaveFailure(error)}`;
+            }
+          }
+          await showSaved(note);
         } catch (error) {
           statusLine.textContent = describeSaveFailure(error);
         } finally {

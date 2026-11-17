@@ -193,6 +193,7 @@ export function useBulkSigning({
           bbox: entry.bbox,
           field_id: entry.field_id,
           signed_at: now,
+          signature_hash: entry.signature_hash ?? null,
         }));
         outcome.placedSignatureIds.push(...created.map((signature) => signature.id));
         if (created.length > 0) setSignatures((current) => [...current, ...created]);

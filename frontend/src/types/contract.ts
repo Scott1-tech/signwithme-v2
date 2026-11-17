@@ -139,6 +139,8 @@ export interface Signature {
   bbox: BBox;
   field_id: string | null;
   signed_at: string;
+  /** sha256 of the stored image (absent on an older server): equal hash = same image. */
+  signature_hash?: string | null;
 }
 
 // A reusable signature in the current user's private library. The raw image

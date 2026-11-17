@@ -30,8 +30,11 @@ import { useStoredChoice, useStoredFlag } from '../hooks/useStoredPreference';
 import { annotationsForRequest, isImage, type Annotation } from '../lib/annotations';
 import { computeSigningGate } from '../lib/gate';
 import {
+  clampToRange,
   fitLayoutToPages,
   removedSlotSet,
+  slotOffsetBounds,
+  withSlotOffset,
   signatureScaleFor,
   withSlotRemoved,
   withoutRemovedSlots,
@@ -250,7 +253,23 @@ export function Workspace() {
 
   // F2: while the draft carries page ops the viewer shows the WHOLE draft (`usePageStructure`).
   const [draftBytes, setDraftBytes] = useState<ArrayBuffer | null>(null);
-  const viewer = usePdfViewer(draftBytes ?? source);
+  // The pages are shown by the PDF editor in its frame (`EmbeddedEditor`), which
+  // opens the file itself: this page does not open it a second time. The
+  // page sizes it needs come from the server's page list instead.
+  const editorShowsPages = Boolean(contractId) && editorDocument.status !== 'unavailable';
+  const viewer = usePdfViewer(editorShowsPages ? null : draftBytes ?? source);
+  const documentPageSizes = useMemo(() => {
+    const map = new Map<number, { width: number; height: number }>();
+    editorDocument.pages.forEach((entry) => {
+      const turned = swapsAxes(normalizeQuarter(entry.rotation));
+      map.set(entry.position, turned
+        ? { width: entry.height_pt, height: entry.width_pt }
+        : { width: entry.width_pt, height: entry.height_pt });
+    });
+    return map;
+  }, [editorDocument.pages]);
+  const shownPageSizes = editorShowsPages ? documentPageSizes : viewer.pageSizes;
+  const shownPageCount = editorShowsPages ? editorDocument.pages.length : viewer.pageCount;
   const { scrollToPage } = viewer;
   /** ROTFIX: a box drawn on page `page` as displayed -> the engine's (unrotated) box. */
   const toEngineRect = <T extends { x: number; y: number; w: number; h: number }>(page: number, rect: T): T => {
@@ -265,6 +284,7 @@ export function Workspace() {
    * slot offsets for a page that has not changed yet.
    */
   const slotPageSizes = useMemo(() => {
+    if (editorShowsPages) return documentPageSizes;
     if (!draftBytes || editorDocument.pages.length === 0) return viewer.pageSizes;
     const map = new Map<number, { width: number; height: number }>();
     editorDocument.pages.forEach((entry) => {
@@ -274,7 +294,7 @@ export function Workspace() {
         : { width: entry.width_pt, height: entry.height_pt });
     });
     return map;
-  }, [draftBytes, editorDocument.pages, viewer.pageSizes]);
+  }, [draftBytes, editorDocument.pages, viewer.pageSizes, editorShowsPages, documentPageSizes]);
   const selection = useSelection();
   const sections = usePanelSections(panel);
   // The ONE undo history (W2): annotations and slot positions, never a server write.
@@ -326,7 +346,7 @@ export function Workspace() {
   } = useSlotLayout({
     contractId,
     slotSet: allSlotSet,
-    pageSizes: viewer.pageSizes,
+    pageSizes: shownPageSizes,
     slotPageSizes,
     scale: viewer.scale,
     history,
@@ -338,7 +358,11 @@ export function Workspace() {
   const { slots, sigSlots, dateSlots, slotById, sigSlotIds } = slotSet;
 
   const signatureIds = useMemo(() => signatures.map((signature) => signature.id), [signatures]);
-  const signatureImages = useSignatureImages(contractId, signatureIds);
+  const signatureHashes = useMemo(
+    () => new Map(signatures.map((signature) => [signature.id, signature.signature_hash])),
+    [signatures],
+  );
+  const signatureImages = useSignatureImages(contractId, signatureIds, (id) => signatureHashes.get(id) ?? undefined);
 
   const signing = useSigningState(signatures, slotSet, dateValues);
   const {
@@ -413,7 +437,7 @@ export function Workspace() {
     rows: signatures,
     place: contractSignatures.place,
     remove: contractSignatures.remove,
-    pageCount: viewer.pageCount,
+    pageCount: shownPageCount,
     pageSizeOf,
     blocked,
     setBusy,
@@ -479,6 +503,66 @@ export function Workspace() {
       }),
     [signatures, signatureImages, slotById, dateSlots, dateValues, layout, drag.offsetsOf, resize.scaleOf],
   );
+
+  /**
+   * A signature or a date dragged in the editor (`editor/js/sign-overlays.js`).
+   * `dx`/`dy` in points, right / DOWN positive. A slot's mark moves by its
+   * slot offset (one undo step, kept in the layout, printed at finalize); a
+   * free signature gets a new box on the server.
+   */
+  const moveEditorOverlay = useStableCallback((key: string, dx: number, dy: number) => {
+    if (!Number.isFinite(dx) || !Number.isFinite(dy) || (Math.abs(dx) < 0.25 && Math.abs(dy) < 0.25)) return;
+    const moveSlot = (fieldId: string) => {
+      const slot = slotById.get(fieldId);
+      commitLayout((current) => {
+        const start = { dx: current.slot_offsets_x_pt[fieldId] ?? 0, dy: current.slot_offsets_pt[fieldId] ?? 0 };
+        const page = slot?.page ? pageSizeOf(slot.page) : null;
+        const bounds =
+          slot && slot.bbox && page
+            ? slotOffsetBounds({ kind: slot.kind, bbox: slot.bbox as BBox, rule_y: slot.rule_y }, current, page)
+            : { dx: null, dy: null };
+        // The slot offset's y is positive UP.
+        return withSlotOffset(current, fieldId, {
+          dx: clampToRange(start.dx + dx, bounds.dx),
+          dy: clampToRange(start.dy - dy, bounds.dy),
+        });
+      }, { label: 'Move slot' });
+    };
+    if (key.startsWith('date:')) {
+      moveSlot(key.slice(5));
+      return;
+    }
+    if (!key.startsWith('sig:')) return;
+    const signature = signatures.find((row) => row.id === key.slice(4));
+    if (!signature) return;
+    if (signature.field_id && slotById.get(signature.field_id)?.kind === 'signature') {
+      moveSlot(signature.field_id);
+      return;
+    }
+    const size = pageSizeOf(signature.page_number);
+    const box = signature.bbox;
+    const maxX = size ? size.width - box.width : Number.POSITIVE_INFINITY;
+    const maxY = size ? size.height - box.height : Number.POSITIVE_INFINITY;
+    void resizeFreeSignature(signature.id, {
+      ...box,
+      x: Math.max(0, Math.min(maxX, box.x + dx)),
+      y: Math.max(0, Math.min(maxY, box.y + dy)),
+    });
+  });
+
+  /** The editor's Sign tool: a click on the page opens the signature dialog for that spot. */
+  const signFromEditor = useStableCallback((page: number, x: number, y: number) => {
+    if (blocked) {
+      setError(blockedReason ?? 'Signing is not available for this contract yet');
+      return;
+    }
+    const width = 150;
+    const height = 50;
+    const size = pageSizeOf(page);
+    const left = Math.max(0, Math.min((size?.width ?? x + width) - width, x - width / 2));
+    const top = Math.max(0, Math.min((size?.height ?? y + height) - height, y - height / 2));
+    onSignatureClick(page, { x: left, y: top, width, height });
+  });
 
   /** "Remove and place again" on a free signature (the editor's wording). */
   const removeFreeSignature = useStableCallback(async (signatureId: string) => {
@@ -1791,9 +1875,15 @@ export function Workspace() {
             focus={editorFocus}
             overlays={editorOverlays}
             signHistory={signHistory}
+            onSignAt={signFromEditor}
+            onOverlayMove={moveEditorOverlay}
             onSaved={() => {
-              // The new version, its analysis and any removed signatures show after a reload.
-              window.setTimeout(() => window.location.reload(), 1200);
+              // The new version, its analysis and any removed signatures are
+              // read again in place: no page reload, and the file the editor
+              // just downloaded is reused (`lib/documentCache`).
+              void refresh();
+              void contractDocument.reload();
+              signaturesApi.list(contractId).then(setSignatures).catch(() => undefined);
             }}
           />
         ) : (

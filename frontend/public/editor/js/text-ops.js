@@ -170,6 +170,19 @@
     };
   }
 
+  // The same box at the place the line was dragged to, kept on the page.
+  function movedBox(line, page, move) {
+    const b = line.bbox;
+    const x = Math.max(0, Math.min(page.widthPt - 10, b.x_pt + move.dxPt));
+    const y = Math.max(0, b.y_pt + move.dyPt);
+    return {
+      x_pt: x,
+      y_pt: y,
+      w_pt: Math.max(b.w_pt, page.widthPt - RIGHT_MARGIN_PT - x),
+      h_pt: b.h_pt,
+    };
+  }
+
   function problem(code, change, page) {
     return {
       code,
@@ -232,7 +245,13 @@
         continue;
       }
       const text = textOf(units);
-      if (text === line.text) continue;
+      const move = changes.find((change) => change.dxPt || change.dyPt) || null;
+      if (text === line.text && !move) continue;
+      // The file knows this text as ONE line: a part of it cannot be moved away from the rest.
+      if (move && text.trim() !== '' && move.ptW < line.bbox.w_pt * 0.8) {
+        problems.push(problem('partial_move', move, page));
+        continue;
+      }
 
       const id = `op${ops.length + 1}`;
       const target = {
@@ -250,8 +269,9 @@
           page_uid: page.pageUid,
           target,
           runs: runsOf(units),
-          box: boxFor(line, page),
-          fit: 'shrink',
+          box: move ? movedBox(line, page, move) : boxFor(line, page),
+          // A moved line keeps its size even when it now reaches past the margin.
+          fit: move ? 'overflow' : 'shrink',
         });
       }
       labels.push({ id, page: page.pageIndex + 1, text: line.text.slice(0, 60) });
@@ -261,17 +281,19 @@
 
   // A problem, in words for the person editing (Uzbek, as the rest of the editor).
   function describeProblem(item) {
-    const where = `Sahifa ${item.page}`;
-    const shown = item.text ? ` («${item.text}»)` : '';
+    const where = `Page ${item.page}`;
+    const shown = item.text ? ` ("${item.text}")` : '';
     switch (item.code) {
       case 'blank_add':
-        return `${where}: bo‘sh joyga yangi matn qo‘shish hozircha saqlanmaydi${shown}.`;
+        return `${where}: new text in an empty place cannot be saved this way${shown}.`;
+      case 'partial_move':
+        return `${where}: part of a line cannot be moved on its own — move the whole line${shown}.`;
       case 'text_not_found':
-        return `${where}: matn o‘zgargan — sahifani yangilab, qayta tahrirlang${shown}.`;
+        return `${where}: the text has changed — reload the page and edit it again${shown}.`;
       case 'not_editable':
-        return `${where}: bu joydagi matn tahrirlanmaydi${item.detail ? ` (${item.detail})` : ''}${shown}.`;
+        return `${where}: this text cannot be edited${item.detail ? ` (${item.detail})` : ''}${shown}.`;
       default:
-        return `${where}: tahrir qilingan matn joyi topilmadi${shown}.`;
+        return `${where}: the place of the edited text was not found${shown}.`;
     }
   }
 

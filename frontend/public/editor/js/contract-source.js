@@ -31,11 +31,11 @@ async function editorRequest(path, options) {
   try {
     response = await fetch(path, Object.assign({}, options, { headers }));
   } catch (error) {
-    throw new EditorApiError(0, 'network', 'Serverga ulanib bo‘lmadi. Internetni tekshirib, qayta urinib ko‘ring.', {});
+    throw new EditorApiError(0, 'network', 'Could not reach the server. Check the connection and try again.', {});
   }
   if (response.ok) return response;
   if (response.status === 401) {
-    throw new EditorApiError(401, 'unauthorized', 'Sessiya tugagan. Ilovaga qayta kiring, so‘ng bu sahifani yangilang.', {});
+    throw new EditorApiError(401, 'unauthorized', 'Your session has ended. Sign in to the app again, then reload this page.', {});
   }
   let body = null;
   try {
@@ -66,8 +66,49 @@ async function editorJson(path, method, body) {
 async function loadContractVersion(contractId) {
   const state = await (await editorRequest(`/api/contracts/${contractId}/document`)).json();
   const versionNo = state.current_version.version_no;
-  const file = await editorRequest(`/api/contracts/${contractId}/document/versions/${versionNo}/file`);
-  return { versionNo, bytes: await file.arrayBuffer() };
+  const download = async () => {
+    const file = await editorRequest(`/api/contracts/${contractId}/document/versions/${versionNo}/file`);
+    return file.arrayBuffer();
+  };
+  // Inside the contract page the file is downloaded once for both (src/lib/documentCache.ts).
+  let shared = null;
+  try {
+    shared = editorIsEmbedded() ? window.parent.__swmDocumentCache : null;
+  } catch (error) {
+    shared = null;
+  }
+  if (!shared) return { versionNo, bytes: await download() };
+  // A copy: pdf.js hands the buffer it is given to its worker.
+  return { versionNo, bytes: new Uint8Array(await shared.get(contractId, versionNo, download)).slice().buffer };
+}
+
+/** The version's page uids by page index (0-based). */
+async function pageUidsOf(contractId, versionNo) {
+  const pages = await editorJson(`/api/contracts/${contractId}/document/versions/${versionNo}/pages`, 'GET');
+  const uidByIndex = {};
+  pages.forEach((page) => {
+    uidByIndex[page.position - 1] = page.page_uid;
+  });
+  return uidByIndex;
+}
+
+/** The contract's saved markup: { revision, elements }. */
+async function loadContractMarkup(contractId) {
+  return editorJson(`/api/contracts/${contractId}/document/markup`, 'GET');
+}
+
+/**
+ * Saves the editor's added text, ✓ / ✕ and whiteout as the contract's markup.
+ * `mine` is [{ pageIndex, element }]; `takenIds` the server elements the
+ * editor showed (they are replaced); every other element is kept as it is.
+ */
+async function saveContractMarkup(contractId, uidByIndex, mine, takenIds) {
+  const current = await loadContractMarkup(contractId);
+  const elements = window.MarkupBridge.mergeForSave(current.elements, takenIds, mine, uidByIndex);
+  return editorJson(`/api/contracts/${contractId}/document/markup`, 'PUT', {
+    revision: current.revision,
+    elements,
+  });
 }
 
 /** A request id for one save: 8 to 64 letters, digits, `-` or `_`, as the server requires. */
@@ -83,31 +124,31 @@ function describeSavedVersion(saved) {
   const unchanged = (saved.warnings || []).some((warning) => warning.code === 'unchanged');
   const parts = [
     unchanged
-      ? `Fayl o‘zgarmagan; versiya ${saved.version.version_no} qoldi.`
-      : `Saqlandi: versiya ${saved.version.version_no}.`,
+      ? `The file did not change; it stays version ${saved.version.version_no}.`
+      : `Saved: version ${saved.version.version_no}.`,
   ];
   if (saved.remapped && saved.remapped.signatures_removed) {
-    parts.push(`Imzolar o‘chirildi: ${saved.remapped.signatures_removed}.`);
+    parts.push(`Signatures removed: ${saved.remapped.signatures_removed}.`);
   }
-  if (saved.review_reset) parts.push('Shartnoma qayta ko‘rib chiqishga yuborildi.');
+  if (saved.review_reset) parts.push('The contract went back for review.');
   return parts.join(' ');
 }
 
 /** What a failed save says on the page. */
 function describeSaveFailure(error) {
-  if (!(error instanceof EditorApiError)) return 'Saqlab bo‘lmadi. Qayta urinib ko‘ring.';
-  if (error.status === 403) return 'Bu hujjatni tahrirlash huquqingiz yo‘q.';
+  if (!(error instanceof EditorApiError)) return 'Could not save. Try again.';
+  if (error.status === 403) return 'You may not edit this document.';
   switch (error.code) {
     case 'base_outdated':
-      return 'Shartnomaning yangi versiyasi bor. Sahifani yangilang va o‘zgarishlarni qayta kiriting.';
+      return 'There is a newer version of this contract. Reload the page and make the changes again.';
     case 'draft_locked':
-      return 'Hujjat hozir ish oynasida tahrirlanmoqda. Keyinroq qayta urinib ko‘ring.';
+      return 'The document is being edited elsewhere. Try again later.';
     case 'contract_busy':
-      return 'Shartnoma hozir tahlil qilinmoqda. Tugagach qayta urinib ko‘ring.';
+      return 'The contract is being analysed. Try again when it has finished.';
     case 'contract_completed':
-      return 'Shartnoma yakunlangan; hujjatni o‘zgartirib bo‘lmaydi.';
+      return 'The contract is completed; the document cannot change.';
     case 'page_count_changed':
-      return 'Sahifalar soni o‘zgargan. Sahifani yangilab qayta urinib ko‘ring.';
+      return 'The number of pages changed. Reload the page and try again.';
     default:
       return error.message;
   }
@@ -138,16 +179,32 @@ async function buildPageList(engine) {
   const list = document.getElementById('page-list');
   if (!list || !engine.pdfDoc) return;
   list.innerHTML = '';
-  for (let pageNo = 1; pageNo <= engine.pdfDoc.numPages; pageNo++) {
-    const page = await engine.pdfDoc.getPage(pageNo);
-    const viewport = page.getViewport({ scale: 0.2 });
+  const doc = engine.pdfDoc;
+  // A picture is drawn when its place in the list scrolls into view.
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(async (entry) => {
+      if (!entry.isIntersecting) return;
+      const button = entry.target;
+      observer.unobserve(button);
+      if (engine.pdfDoc !== doc) return;
+      const page = await doc.getPage(Number(button.dataset.page));
+      const viewport = page.getViewport({ scale: 0.2 });
+      const canvas = button.querySelector('canvas');
+      canvas.width = Math.ceil(viewport.width);
+      canvas.height = Math.ceil(viewport.height);
+      await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+    });
+  }, { root: list, rootMargin: '400px 0px' });
+  const first = await doc.getPage(1);
+  const size = first.getViewport({ scale: 0.2 });
+  for (let pageNo = 1; pageNo <= doc.numPages; pageNo++) {
     const canvas = document.createElement('canvas');
-    canvas.width = Math.ceil(viewport.width);
-    canvas.height = Math.ceil(viewport.height);
-    await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+    canvas.width = Math.ceil(size.width);
+    canvas.height = Math.ceil(size.height);
     const button = document.createElement('button');
     button.type = 'button';
-    button.title = `Sahifa ${pageNo}`;
+    button.title = `Page ${pageNo}`;
+    button.dataset.page = String(pageNo);
     button.append(canvas);
     const label = document.createElement('span');
     label.textContent = String(pageNo);
@@ -158,6 +215,7 @@ async function buildPageList(engine) {
       list.querySelectorAll('button').forEach((item) => item.classList.toggle('active', item === button));
     });
     list.append(button);
+    observer.observe(button);
   }
 }
 
@@ -197,7 +255,7 @@ function explainSaveError(error, labels) {
   return new EditorApiError(
     error.status,
     error.code,
-    `Sahifa ${label.page}: «${label.text}» — ${error.message}`,
+    `Page ${label.page}: "${label.text}" — ${error.message}`,
     error.details,
   );
 }
@@ -218,7 +276,7 @@ async function saveEditsToContract(contractId, baseVersionNo, edits, options) {
   for (const pageIndex of [...new Set(edits.map((edit) => edit.pageIndex))]) {
     const info = positions.find((page) => page.position === pageIndex + 1);
     if (!info) {
-      return { status: 'blocked', messages: [`Sahifa ${pageIndex + 1} topilmadi. Sahifani yangilang.`] };
+      return { status: 'blocked', messages: [`Page ${pageIndex + 1} was not found. Reload the page.`] };
     }
     const model = await editorJson(`${base}/versions/${baseVersionNo}/pages/${info.page_uid}/text`, 'GET');
     pages.push({ pageIndex, pageUid: info.page_uid, widthPt: model.width_pt, lines: textLinesOf(model) });
@@ -228,6 +286,26 @@ async function saveEditsToContract(contractId, baseVersionNo, edits, options) {
   if (built.problems.length > 0) {
     return { status: 'blocked', messages: built.problems.map(window.TextOps.describeProblem) };
   }
+  // Page changes go after the text changes, in the same draft (one new version).
+  const uidAt = (index) => (positions.find((page) => page.position === index + 1) || {}).page_uid;
+  const newUid = () => `pg_${Array.from(window.crypto.getRandomValues(new Uint8Array(6)), (b) => b.toString(16).padStart(2, '0')).join('')}`;
+  let seq = built.ops.length;
+  const pageOps = [];
+  for (const change of options.pages || []) {
+    seq += 1;
+    if (change.type === 'rotate' && uidAt(change.pageIndex)) {
+      pageOps.push({ id: `op${seq}`, kind: 'page.rotate', page_uid: uidAt(change.pageIndex), rotation: change.rotation });
+    } else if (change.type === 'insert' && uidAt(change.afterIndex)) {
+      pageOps.push({ id: `op${seq}`, kind: 'page.insert', new_page_uid: newUid(), after_page_uid: uidAt(change.afterIndex) });
+    }
+  }
+  for (const change of options.pages || []) {
+    seq += 1;
+    if (change.type === 'delete' && uidAt(change.pageIndex)) {
+      pageOps.push({ id: `op${seq}`, kind: 'page.delete', page_uid: uidAt(change.pageIndex) });
+    }
+  }
+  built.ops.push(...pageOps);
   if (built.ops.length === 0) return { status: 'nothing' };
 
   const clientSessionId = newCommitRequestId();
@@ -239,7 +317,7 @@ async function saveEditsToContract(contractId, baseVersionNo, edits, options) {
     throw new EditorApiError(
       409,
       'draft_locked',
-      `Hujjat hozir ${draft.owner_name || 'boshqa foydalanuvchi'} tomonidan tahrirlanmoqda.`,
+      `The document is being edited by ${draft.owner_name || 'another user'}.`,
       {},
     );
   }

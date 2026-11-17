@@ -4,7 +4,7 @@ from __future__ import annotations
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -498,8 +498,10 @@ def get_contract_file(
     """
     contract = get_contract_or_404(db, contract_id)
     assert_can_view_contract(contract, user)
-    return StreamingResponse(
-        storage.stream(contract.file_path),
+    # The whole body in one piece (with its Content-Length): iterating a
+    # file object sends a PDF "line" by "line" -- thousands of tiny chunks.
+    return Response(
+        content=storage.get_bytes(contract.file_path),
         media_type="application/pdf",
         headers={"Cache-Control": "no-store"},
     )

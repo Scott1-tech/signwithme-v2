@@ -160,7 +160,11 @@ def get_document(
     from app.services import pdf_engine
 
     try:
-        warnings = pdf_engine.open_warnings(storage.get_bytes(current.file_path), current.file_hash)
+        # A loader, not the bytes: the answer is cached by hash, and this route
+        # is called on every page open.
+        warnings = pdf_engine.open_warnings(
+            lambda: storage.get_bytes(current.file_path), current.file_hash
+        )
     except pdf_engine.EngineError as exc:
         raise documents.from_engine(exc) from exc
     return {
@@ -252,7 +256,7 @@ def get_page_text(
         raise NotFoundError("No such page in this version")
     try:
         model = pdf_engine.page_text_model(
-            storage.get_bytes(version.file_path), page.position - 1, version.file_hash
+            lambda: storage.get_bytes(version.file_path), page.position - 1, version.file_hash
         )
     except pdf_engine.EngineError as exc:
         raise documents.from_engine(exc) from exc

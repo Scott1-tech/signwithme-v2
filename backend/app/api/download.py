@@ -9,7 +9,7 @@ from __future__ import annotations
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from app.api.deps import assert_can_view_contract, get_contract_or_404
@@ -47,9 +47,8 @@ def download_final(
         commit=True,
     )
 
-    stream = storage.stream(contract.final_file_path)
-    return StreamingResponse(
-        stream,
+    return Response(
+        content=storage.get_bytes(contract.final_file_path),
         media_type="application/pdf",
         headers={
             "Content-Disposition": f'attachment; filename="{filename}"',

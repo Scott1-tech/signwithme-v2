@@ -535,14 +535,7 @@ export function Dashboard() {
           <Link className="button button--primary" to="/contracts/new">
             New contract
           </Link>
-          {isAdmin && (
-            <Link className="button" to="/templates">
-              Templates
-            </Link>
-          )}
-          <Link className="button" to="/signatures">
-            My signatures
-          </Link>
+          {/* Templates and My signatures are in the top navigation: not repeated here. */}
         </nav>
       </header>
 

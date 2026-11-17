@@ -12,6 +12,10 @@ interface Props {
   overlays?: readonly EditorOverlay[];
   /** The signing steps the editor's Undo / Redo can take back. */
   signHistory?: SignHistory;
+  /** The editor's Sign tool was clicked on a page (points, top-left origin). */
+  onSignAt?: (page: number, x: number, y: number) => void;
+  /** A signature or date was dragged in the editor (points, right / down positive). */
+  onOverlayMove?: (key: string, dx: number, dy: number) => void;
 }
 
 /**
@@ -28,10 +32,12 @@ interface Props {
  *
  * Messages are accepted from this page's own origin only.
  */
-export function EmbeddedEditor({ contractId, focus, onSaved, overlays, signHistory }: Props) {
+export function EmbeddedEditor({ contractId, focus, onSaved, overlays, signHistory, onSignAt, onOverlayMove }: Props) {
   const frameRef = useRef<HTMLIFrameElement>(null);
   const history = useRef(signHistory);
   history.current = signHistory;
+  const handlers = useRef({ onSignAt, onOverlayMove });
+  handlers.current = { onSignAt, onOverlayMove };
 
   const sendOverlays = useCallback(() => {
     const target = frameRef.current?.contentWindow;
@@ -52,8 +58,22 @@ export function EmbeddedEditor({ contractId, focus, onSaved, overlays, signHisto
     const onMessage = (event: MessageEvent) => {
       if (event.origin !== window.location.origin) return;
       if (event.source !== frameRef.current?.contentWindow) return;
-      const data = event.data as { type?: unknown } | null;
+      const data = event.data as { type?: unknown; [key: string]: unknown } | null;
       if (!data) return;
+      const num = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) ? value : null);
+      if (data.type === 'editor:sign-at') {
+        const page = num(data.page);
+        const x = num(data.x);
+        const y = num(data.y);
+        if (page !== null && x !== null && y !== null) handlers.current.onSignAt?.(page, x, y);
+        return;
+      }
+      if (data.type === 'editor:overlay-move') {
+        const dx = num(data.dx);
+        const dy = num(data.dy);
+        if (typeof data.key === 'string' && dx !== null && dy !== null) handlers.current.onOverlayMove?.(data.key, dx, dy);
+        return;
+      }
       if (data.type === 'editor:saved') onSaved();
       else if (data.type === 'editor:ready') sendOverlays();
       else if (data.type === 'editor:sign-undo') void history.current?.undo();

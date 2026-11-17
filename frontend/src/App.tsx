@@ -1,16 +1,24 @@
+import { lazy, Suspense } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { Layout } from './components/Layout';
-import { Account } from './pages/Account';
 import { useAuth } from './hooks/useAuth';
-import { ContractUpload } from './pages/ContractUpload';
-import { ContractWorkspace, WorkspaceDefaultRedirect } from './pages/ContractWorkspace';
 import { Dashboard } from './pages/Dashboard';
-import { FinalContract } from './pages/FinalContract';
 import { Login } from './pages/Login';
-import { MySignatures } from './pages/MySignatures';
-import { ReviewQueue } from './pages/ReviewQueue';
-import { SharedForm } from './pages/SharedForm';
-import { TemplateManager } from './pages/TemplateManager';
+
+// Sign-in and the dashboard open at once; every other page -- above all the
+// contract workspace with the PDF engine -- is downloaded when it is opened.
+const page = <M, K extends keyof M>(load: () => Promise<M>, name: K) =>
+  lazy(async () => ({ default: (await load())[name] as unknown as () => JSX.Element }));
+
+const Account = page(() => import('./pages/Account'), 'Account');
+const ContractUpload = page(() => import('./pages/ContractUpload'), 'ContractUpload');
+const ContractWorkspace = page(() => import('./pages/ContractWorkspace'), 'ContractWorkspace');
+const WorkspaceDefaultRedirect = page(() => import('./pages/ContractWorkspace'), 'WorkspaceDefaultRedirect');
+const FinalContract = page(() => import('./pages/FinalContract'), 'FinalContract');
+const MySignatures = page(() => import('./pages/MySignatures'), 'MySignatures');
+const ReviewQueue = page(() => import('./pages/ReviewQueue'), 'ReviewQueue');
+const SharedForm = page(() => import('./pages/SharedForm'), 'SharedForm');
+const TemplateManager = page(() => import('./pages/TemplateManager'), 'TemplateManager');
 
 function RequireAuth({ children, role }: { children: JSX.Element; role?: 'reviewer' | 'admin' }) {
   const { user, loading, isAtLeast } = useAuth();
@@ -22,6 +30,7 @@ function RequireAuth({ children, role }: { children: JSX.Element; role?: 'review
 
 export default function App() {
   return (
+    <Suspense fallback={<p className="page">Loading…</p>}>
     <Routes>
       <Route path="/login" element={<Login />} />
       {/* F3: a share link's form -- no account, no app navigation. */}
@@ -64,5 +73,6 @@ export default function App() {
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </Suspense>
   );
 }

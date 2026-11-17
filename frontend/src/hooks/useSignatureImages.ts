@@ -46,8 +46,18 @@ async function measureInk(url: string): Promise<{ width: number; height: number;
 export function useSignatureImages(
   contractId: string | undefined,
   signatureIds: readonly string[],
+  /**
+   * The stored image's hash per signature id. One signature placed in thirty
+   * slots is thirty rows with ONE image: rows with the same hash share a
+   * single download (and a single blob URL).
+   */
+  hashOf?: (signatureId: string) => string | undefined,
 ): ReadonlyMap<string, SignatureImageEntry> {
   const cache = useRef(new Map<string, SignatureImageEntry>());
+  const hashOfRef = useRef(hashOf);
+  hashOfRef.current = hashOf;
+  /** Downloads in flight or done, by image hash; `ids` are the rows using each. */
+  const shared = useRef(new Map<string, { image: Promise<SignatureImage | null>; ids: Set<string> }>());
   // Bumped whenever the cache is thrown away, so a fetch that was in flight
   // for the old contract (or a StrictMode double-mount) cannot write into it.
   const generation = useRef(0);
@@ -57,10 +67,11 @@ export function useSignatureImages(
   useEffect(
     () => () => {
       generation.current += 1;
-      cache.current.forEach((entry) => {
-        if (typeof entry === 'object') URL.revokeObjectURL(entry.url);
-      });
+      new Set(
+        [...cache.current.values()].flatMap((entry) => (typeof entry === 'object' ? [entry.url] : [])),
+      ).forEach((url) => URL.revokeObjectURL(url));
       cache.current = new Map();
+      shared.current = new Map();
     },
     [contractId],
   );
@@ -70,38 +81,66 @@ export function useSignatureImages(
     const wanted = new Set(idsKey ? idsKey.split('|') : []);
     let changed = false;
 
+    /** The row stops using its image; the blob goes with its last user. */
+    const release = (id: string, entry: SignatureImageEntry | undefined) => {
+      let stillUsed = false;
+      shared.current.forEach((group, hash) => {
+        if (!group.ids.delete(id)) return;
+        if (group.ids.size === 0) shared.current.delete(hash);
+        else stillUsed = true;
+      });
+      if (typeof entry === 'object' && !stillUsed) URL.revokeObjectURL(entry.url);
+    };
+
     cache.current.forEach((entry, id) => {
       if (wanted.has(id)) return;
-      if (typeof entry === 'object') URL.revokeObjectURL(entry.url);
       cache.current.delete(id);
+      release(id, entry);
       changed = true;
     });
 
     const run = generation.current;
+    const download = async (id: string): Promise<SignatureImage | null> => {
+      try {
+        const blob = await signaturesApi.imageBlob(contractId, id);
+        const url = URL.createObjectURL(blob);
+        try {
+          return { url, ...(await measureInk(url)) };
+        } catch {
+          URL.revokeObjectURL(url);
+          return null;
+        }
+      } catch {
+        return null;
+      }
+    };
     wanted.forEach((id) => {
       if (cache.current.has(id)) return;
       cache.current.set(id, 'loading');
       changed = true;
-      void (async () => {
-        let entry: SignatureImageEntry = 'failed';
-        try {
-          const blob = await signaturesApi.imageBlob(contractId, id);
-          const url = URL.createObjectURL(blob);
-          try {
-            entry = { url, ...(await measureInk(url)) };
-          } catch {
-            URL.revokeObjectURL(url);
-          }
-        } catch {
-          /* stays 'failed' */
-        }
+      const hash = hashOfRef.current?.(id) || `id:${id}`;
+      let group = shared.current.get(hash);
+      if (!group) {
+        group = { image: download(id), ids: new Set() };
+        shared.current.set(hash, group);
+      }
+      group.ids.add(id);
+      const mine = group;
+      void mine.image.then((image) => {
         if (run !== generation.current || cache.current.get(id) !== 'loading') {
-          if (typeof entry === 'object') URL.revokeObjectURL(entry.url);
+          // Left while loading: the blob is dropped once nobody uses it.
+          if (image && (run !== generation.current || mine.ids.size === 0)) URL.revokeObjectURL(image.url);
           return;
         }
-        cache.current.set(id, entry);
+        if (!image) {
+          // A failed download is not shared: the next row asks again.
+          if (shared.current.get(hash) === mine) shared.current.delete(hash);
+          cache.current.set(id, 'failed');
+        } else {
+          cache.current.set(id, image);
+        }
         setVersion((version) => version + 1);
-      })();
+      });
     });
 
     if (changed) setVersion((version) => version + 1);
