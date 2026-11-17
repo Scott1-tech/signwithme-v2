@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ApiError } from '../api/client';
+import { contractsApi } from '../api/contracts';
 import { editorApi, isAnnotationsUnsupported, type EditorFinalizeBody } from '../api/editor';
 import type { DatePlacementInput, FinalizeConflictDetails } from '../api/signatures';
 import type { AnnotationRequest } from '../lib/annotations';
@@ -92,6 +93,22 @@ export function useFinalize({ contractId, setBusy, setError, describeError }: Op
         const done = await editorApi.finalize(contractId, buildFinalizeBody(inputs));
         navigate(`/contracts/${contractId}/final`, { state: { fileHash: done.file_hash } });
       } catch (cause) {
+        // The answer can be lost on the way while the server finishes the PDF
+        // (a long contract on a slow host), and a second press then hears
+        // "already finalised". Either way: if the signed PDF exists, go to it.
+        const lost = cause instanceof TypeError || (cause instanceof ApiError && [502, 503, 504, 524].includes(cause.status));
+        const already = cause instanceof ApiError && cause.status === 409 && /already final/i.test(cause.message);
+        if (lost || already) {
+          try {
+            const detail = await contractsApi.get(contractId);
+            if (detail.final_available) {
+              navigate(`/contracts/${contractId}/final`);
+              return;
+            }
+          } catch {
+            // fall through to the message below
+          }
+        }
         if (inputs.annotations !== undefined && isAnnotationsUnsupported(cause)) {
           setError(ANNOTATIONS_UNSUPPORTED_NOTE);
           return;

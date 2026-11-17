@@ -1880,8 +1880,8 @@ export function Workspace() {
           title={contractTitle}
           finalize={{
             busy,
-            blocked,
-            blockedReason,
+            blocked: blocked || finalAvailable,
+            blockedReason: finalAvailable ? 'This contract is already finalised' : blockedReason,
             signatureCount: signatures.length,
             slotsComplete,
             onFinalize: finalize,
@@ -1896,7 +1896,25 @@ export function Workspace() {
             one appearing or going mid-drag cannot slide the page under the
             pointer. The passing notes are NOT here: see `floating` below. */}
         <div className="workspace__banners" ref={bannersRef} data-testid="workspace-banners">
-          <FinalizeErrors error={error} missing={finalizeMissing} onShow={showSlot} />
+          {finalAvailable ? (
+            <div className="alert alert--good" role="status" data-testid="contract-signed">
+              <p>This contract is signed and finalised. Changes are no longer possible.</p>
+              <div className="alert__actions">
+                <button type="button" className="button button--primary" onClick={() => void downloadPdf()} disabled={downloading}>
+                  {downloading ? 'Downloading…' : 'Download signed PDF'}
+                </button>
+                <button
+                  type="button"
+                  className="button"
+                  onClick={() => window.location.assign(`/contracts/${contractId}/final`)}
+                >
+                  Open final contract
+                </button>
+              </div>
+            </div>
+          ) : (
+            <FinalizeErrors error={error} missing={finalizeMissing} onShow={showSlot} />
+          )}
           <SessionBanners
             session={session}
             markup={markup}
