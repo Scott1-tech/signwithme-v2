@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { contractsApi } from '../api/contracts';
-import { tokenStore } from '../api/client';
+import { fetchPdf } from '../api/client';
 import type { ContractDetail } from '../types/contract';
 
 export function FinalContract() {
@@ -21,24 +21,35 @@ export function FinalContract() {
     contractsApi.verifyFinal(contractId).then(setVerification).catch(() => undefined);
   }, [contractId]);
 
+  const [downloading, setDownloading] = useState(false);
   const download = async () => {
     if (!contractId) return;
     // The download endpoint is authenticated, so the bytes are fetched with the
-    // bearer token and handed to the browser as a blob.
-    const response = await fetch(`/api/download/${contractId}/final`, {
-      headers: { Authorization: `Bearer ${tokenStore.get() ?? ''}` },
-    });
-    if (!response.ok) {
-      setError(`Download failed (${response.status})`);
-      return;
+    // bearer token (retried if the connection drops) and handed to the browser.
+    setDownloading(true);
+    setError(null);
+    try {
+      const bytes = await fetchPdf(`/api/download/${contractId}/final`);
+      const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `contract-${contractId}-signed.pdf`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      // Revoked later: some browsers start the save only after the click returns.
+      window.setTimeout(() => URL.revokeObjectURL(url), 10000);
+    } catch (cause) {
+      setError(
+        cause instanceof TypeError
+          ? 'The download was interrupted (the connection dropped). Please try again.'
+          : cause instanceof Error
+            ? `Download failed: ${cause.message}`
+            : 'Download failed',
+      );
+    } finally {
+      setDownloading(false);
     }
-    const blob = await response.blob();
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = `contract-${contractId}-signed.pdf`;
-    anchor.click();
-    URL.revokeObjectURL(url);
   };
 
   return (
@@ -60,8 +71,8 @@ export function FinalContract() {
 
           {contract.final_available ? (
             <>
-              <button type="button" className="button button--primary" onClick={download}>
-                Download signed PDF
+              <button type="button" className="button button--primary" onClick={download} disabled={downloading}>
+                {downloading ? 'Downloading…' : 'Download signed PDF'}
               </button>
               {verification && (
                 <p className={verification.intact ? 'hint' : 'alert alert--error'}>

@@ -104,12 +104,30 @@ export const api = {
  * on the object store being reachable from the browser.
  */
 export async function fetchPdf(path: string): Promise<ArrayBuffer> {
-  const token = tokenStore.get();
-  const response = await fetch(path, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  });
-  if (!response.ok) {
-    throw new ApiError(response.status, 'pdf_fetch_failed', `Could not load PDF (${response.status})`);
+  // A large file on a slow host can lose its connection on the way: a GET is
+  // safe to ask again, so a dropped transfer or a gateway error is retried.
+  const waits = [0, 2000, 5000];
+  let last: unknown = null;
+  for (const wait of waits) {
+    if (wait) await new Promise((resolve) => window.setTimeout(resolve, wait));
+    const token = tokenStore.get();
+    try {
+      const response = await fetch(path, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!response.ok) {
+        const error = new ApiError(response.status, 'pdf_fetch_failed', `Could not load PDF (${response.status})`);
+        if ([502, 503, 504, 524].includes(response.status)) {
+          last = error;
+          continue;
+        }
+        throw error;
+      }
+      return await response.arrayBuffer();
+    } catch (cause) {
+      if (!(cause instanceof TypeError)) throw cause;
+      last = cause;
+    }
   }
-  return response.arrayBuffer();
+  throw last;
 }

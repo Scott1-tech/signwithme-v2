@@ -24,6 +24,20 @@ async function forward(request, env) {
   // The body is read once so the same request can be sent again on a retry.
   const hasBody = request.method !== 'GET' && request.method !== 'HEAD';
   const body = hasBody ? await request.arrayBuffer() : undefined;
+  // A read is always safe to ask again. A write (finalize, save, upload) is
+  // sent again only while the app is still waking up (its /health does not
+  // answer): when the app is up, a lost answer may mean it already did the
+  // work, and sending it twice did it twice or answered "already finalised".
+  const isRead = !hasBody;
+  const appIsDown = async () => {
+    try {
+      const health = await fetch(backendOf(env) + '/health');
+      return !health.ok;
+    } catch (error) {
+      return true;
+    }
+  };
+  let retry = isRead;
   const started = Date.now();
   for (;;) {
     try {
@@ -37,13 +51,17 @@ async function forward(request, env) {
       });
       // Render answers 502/503 while an instance is still starting.
       const waking = response.status === 502 || response.status === 503;
-      if (!waking || Date.now() - started > RETRY_FOR_MS) return response;
+      if (waking && !isRead) retry = await appIsDown();
+      if (!retry || !waking || Date.now() - started > RETRY_FOR_MS) return response;
     } catch (error) {
-      if (Date.now() - started > RETRY_FOR_MS) {
+      if (!isRead) retry = await appIsDown();
+      if (!retry || Date.now() - started > RETRY_FOR_MS) {
         return new Response(
           JSON.stringify({
             error: 'backend_unavailable',
-            message: 'The server is starting up. Please try again in a minute.',
+            message: retry
+              ? 'The server is starting up. Please try again in a minute.'
+              : 'The connection to the server dropped. Check whether the change was made before trying again.',
           }),
           { status: 503, headers: { 'content-type': 'application/json' } },
         );

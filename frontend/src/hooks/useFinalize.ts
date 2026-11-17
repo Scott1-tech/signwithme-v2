@@ -99,14 +99,28 @@ export function useFinalize({ contractId, setBusy, setError, describeError }: Op
         const lost = cause instanceof TypeError || (cause instanceof ApiError && [502, 503, 504, 524].includes(cause.status));
         const already = cause instanceof ApiError && cause.status === 409 && /already final/i.test(cause.message);
         if (lost || already) {
-          try {
-            const detail = await contractsApi.get(contractId);
-            if (detail.final_available) {
-              navigate(`/contracts/${contractId}/final`);
-              return;
+          // A lost answer: the server may still be building the PDF. Look for
+          // it for up to a minute and a half before saying anything.
+          const deadline = Date.now() + (lost ? 90_000 : 0);
+          for (;;) {
+            try {
+              const detail = await contractsApi.get(contractId);
+              if (detail.final_available) {
+                navigate(`/contracts/${contractId}/final`);
+                return;
+              }
+            } catch {
+              // keep looking until the deadline
             }
-          } catch {
-            // fall through to the message below
+            if (Date.now() >= deadline) break;
+            await new Promise((resolve) => window.setTimeout(resolve, 3000));
+          }
+          if (lost) {
+            setError(
+              'The connection dropped before the server answered, and the signed contract is not there yet. ' +
+                'Wait a minute and reload the page before generating it again.',
+            );
+            return;
           }
         }
         if (inputs.annotations !== undefined && isAnnotationsUnsupported(cause)) {
