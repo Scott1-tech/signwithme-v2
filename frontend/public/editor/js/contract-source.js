@@ -82,6 +82,38 @@ async function loadContractVersion(contractId) {
   return { versionNo, bytes: new Uint8Array(await shared.get(contractId, versionNo, download)).slice().buffer };
 }
 
+/** The version's page uids by page index (0-based). */
+async function pageUidsOf(contractId, versionNo) {
+  const pages = await editorJson(`/api/contracts/${contractId}/document/versions/${versionNo}/pages`, 'GET');
+  const uidByIndex = {};
+  pages.forEach((page) => {
+    uidByIndex[page.position - 1] = page.page_uid;
+  });
+  return uidByIndex;
+}
+
+/** The contract's saved markup: { revision, elements }. */
+async function loadContractMarkup(contractId) {
+  return editorJson(`/api/contracts/${contractId}/document/markup`, 'GET');
+}
+
+/**
+ * Saves the editor's added text, ✓ / ✕ and whiteout as the contract's markup.
+ * `mine` is [{ pageIndex, element }]; `takenIds` the server elements the
+ * editor showed (they are replaced); every other element is kept as it is.
+ */
+async function saveContractMarkup(contractId, versionNo, mine, takenIds) {
+  const [uidByIndex, current] = await Promise.all([
+    pageUidsOf(contractId, versionNo),
+    loadContractMarkup(contractId),
+  ]);
+  const elements = window.MarkupBridge.mergeForSave(current.elements, takenIds, mine, uidByIndex);
+  return editorJson(`/api/contracts/${contractId}/document/markup`, 'PUT', {
+    revision: current.revision,
+    elements,
+  });
+}
+
 /** A request id for one save: 8 to 64 letters, digits, `-` or `_`, as the server requires. */
 function newCommitRequestId() {
   if (window.crypto && typeof window.crypto.randomUUID === 'function') return window.crypto.randomUUID();

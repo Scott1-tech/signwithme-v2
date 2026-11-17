@@ -148,7 +148,7 @@
         document.addEventListener('keydown', (e) => {
           if (e.key !== 'Enter' || e.shiftKey) return;
           const target = e.target;
-          if (!target.classList || !(target.classList.contains('sejda-line') || target.classList.contains('line-text-input'))) return;
+          if (!target.classList || !['sejda-line', 'line-text-input', 'added-text-editor'].some((name) => target.classList.contains(name))) return;
           e.preventDefault();
           target.blur();
           this.deselectAll();
@@ -1087,6 +1087,10 @@
       }
 
       _createAutoCheckbox(state, x, topY, w, h) {
+        // The same box can be found twice (as a glyph and as a drawn square): one is enough.
+        const twin = [...state.domLayer.querySelectorAll('.sejda-auto-checkbox')].some((node) =>
+          Math.abs((parseFloat(node.style.left) || 0) - x) < 4 && Math.abs((parseFloat(node.style.top) || 0) - topY) < 4);
+        if (twin) return;
         const box = document.createElement('div');
         box.className = 'sejda-auto-checkbox';
         box.style.left = `${x}px`;
@@ -1165,7 +1169,8 @@
 
       // Changes a rebuilt page could not carry over (zoom and rotate rebuild the page).
       _hasDomOnlyChanges(state) {
-        if (state.domLayer.querySelector('.added-obj, .sejda-box-item')) return true;
+        // Added text, ✓ / ✕ and whiteout are carried over (`collectPageMarkup`); anything else is not.
+        if (state.domLayer.querySelector('.added-obj:not([data-type="added-text"]):not([data-type="check"]):not([data-type="cross"]), .sejda-box-item:not([data-type="whiteout"])')) return true;
         for (const entry of (this.registry || new Map()).values()) {
           if (entry.state !== state) continue;
           if (entry.kind === 'line') {
@@ -1257,9 +1262,7 @@
           const erased = !el.isConnected;
           const text = erased ? '' : entry.textEl.textContent.replace(/ /g, ' ');
           if (kind === 'checkbox') {
-            if (erased || text !== entry.origText) {
-              unsupported.push(`${place(state)}: belgi qutisini o‘zgartirish hozircha saqlanmaydi.`);
-            }
+            // ✓ / ✕ in a box is saved as markup (`collectPageMarkup`).
           } else if (kind === 'line') {
             const moved = Math.abs(parseFloat(el.dataset.dx) || 0) > 0.001
               || Math.abs(parseFloat(el.dataset.dy) || 0) > 0.001;
@@ -1273,8 +1276,7 @@
               });
             } else if (text !== entry.origText) edits.push(change(entry, text, false));
           } else if (kind === 'added') {
-            // A line the person added reaches the file only as text in a blank.
-            if (!erased && text.trim()) edits.push(change(entry, text.trim(), true));
+            // Text typed on it is saved as markup (`collectPageMarkup`), not here.
           } else {
             // 'underscore' is a blank in the text; 'vector' is a line drawn in the page.
             if (!erased && (el.classList.contains('line-hidden') || this._geometryChanged(entry))) {
@@ -1284,16 +1286,16 @@
               unsupported.push(`${place(state)}: chiziqni o‘chirish hozircha saqlanmaydi.`);
             } else if (kind === 'underscore' && erased) {
               edits.push(change(entry, '', true));
-            } else if (!erased && text.trim()) {
-              edits.push(change(entry, text.trim(), true));
             }
+            // Text typed on a blank is saved as markup (`collectPageMarkup`), not as a text change.
           }
         }
         for (const state of this.pages) {
           if (state.rotation) {
             unsupported.push(`${place(state)}: sahifa burilgan — burish hozircha saqlanmaydi (0° ga qaytaring).`);
           }
-          if (state.domLayer.querySelector('.added-obj, .sejda-box-item')) {
+          // Added text, ✓ / ✕ and whiteout are saved as markup; other added objects are not yet.
+          if (state.domLayer.querySelector('.added-obj:not([data-type="added-text"]):not([data-type="check"]):not([data-type="cross"]), .sejda-box-item:not([data-type="whiteout"])')) {
             unsupported.push(`${place(state)}: qo‘shilgan matn yoki shakl hozircha saqlanmaydi.`);
           }
         }
@@ -1513,16 +1515,24 @@
           }
           if (act === 'zin') {
             state.scale = Math.min(2.4, state.scale + 0.15);
+            const carried = this.collectPageMarkup(state);
             await this._renderStage(state, true);
+            this.restorePageMarkup(state, carried);
           } else if (act === 'zout') {
             state.scale = Math.max(0.6, state.scale - 0.15);
+            const carried = this.collectPageMarkup(state);
             await this._renderStage(state, true);
+            this.restorePageMarkup(state, carried);
           } else if (act === 'rcw') {
+            const carried = this.collectPageMarkup(state);
             state.rotation = (state.rotation + 90) % 360;
             await this._renderStage(state, true);
+            this.restorePageMarkup(state, carried);
           } else if (act === 'rccw') {
+            const carried = this.collectPageMarkup(state);
             state.rotation = (state.rotation + 270) % 360;
             await this._renderStage(state, true);
+            this.restorePageMarkup(state, carried);
           } else if (act === 'del') {
             if (this._hasPendingChanges()) return alert('Avval matndagi o‘zgarishlarni saqlang yoki sahifani yangilang, so‘ng sahifalarni o‘zgartiring.');
             const doc = await PDFDocument.load(this.pdfBytes);
@@ -1682,9 +1692,7 @@
           if (this.activeTool === 'text') {
             this._spawnNewText(state, startX, startY - 8);
           } else if (this.activeTool === 'check' || this.activeTool === 'cross') {
-            const el = this._createObjWrap(state, startX - 9, startY - 11, 20, 20, this.activeTool);
-            el.textContent = this.activeTool === 'check' ? '✓' : '✕';
-            el.style.cssText += 'display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:15px;color:#0956a6;';
+            this._spawnMark(state, this.activeTool, startX, startY, 14 * state.scale);
           } else if (this.activeTool === 'field') {
             const el = this._createObjWrap(state, startX, startY - 12, 165, 22, 'field');
             const inp = document.createElement('input');
@@ -1710,7 +1718,7 @@
         });
       }
 
-      _createResizableBox(state, x, y, w, h, type) {
+      _createResizableBox(state, x, y, w, h, type, quiet = false) {
         const box = document.createElement('div');
         box.className = 'sejda-box-item';
         box.dataset.type = type;
@@ -1747,7 +1755,7 @@
 
         state.domLayer.appendChild(box);
         this._bindBoxDragAnd8WayResize(box);
-        this._pushUndo({ type: 'spawn', node: box });
+        if (!quiet) this._pushUndo({ type: 'spawn', node: box });
         return box;
       }
 
@@ -1813,9 +1821,9 @@
         });
       }
 
-      _createObjWrap(state, x, y, w, h, type) {
+      _createObjWrap(state, x, y, w, h, type, quiet = false) {
         const el = document.createElement('div');
-        el.className = 'added-obj selected';
+        el.className = quiet ? 'added-obj' : 'added-obj selected';
         el.dataset.type = type;
         el.style.left = `${x}px`;
         el.style.top = `${y}px`;
@@ -1824,12 +1832,225 @@
 
         state.domLayer.appendChild(el);
         this._makeAddedObjDraggable(el);
-        this._pushUndo({ type: 'spawn', node: el });
+        if (!quiet) this._pushUndo({ type: 'spawn', node: el });
         return el;
       }
 
-      _spawnNewText(state, x, y) {
-        const wrap = this._createObjWrap(state, x, y, null, null, 'added-text');
+      /* ---------------------------------------------------------------------
+       * ADDED MARKS <-> CONTRACT MARKUP (js/markup-bridge.js). What the person
+       * adds to a page is described in points and saved as the contract's
+       * markup; the same description carries the marks over a zoom.
+       * ------------------------------------------------------------------- */
+
+      _toPx(state, xPt, yPt) {
+        const view = state.pdfPage.view;
+        const p = state.viewport.convertToViewportPoint(view[0] + xPt, view[3] - yPt);
+        return { x: p[0], y: p[1] };
+      }
+
+      // Where the first line of a text element sits: its left end on the baseline, stage px.
+      _baselineOf(el, state) {
+        const probe = document.createElement('span');
+        probe.style.cssText = 'display:inline-block;width:0;height:0;vertical-align:baseline;padding:0;margin:0;';
+        el.insertBefore(probe, el.firstChild);
+        const r = probe.getBoundingClientRect();
+        probe.remove();
+        const s = state.stage.getBoundingClientRect();
+        return { x: r.left - s.left, y: r.top - s.top };
+      }
+
+      _markupIdOf(node) {
+        if (!node.dataset.markupId) node.dataset.markupId = window.MarkupBridge.newId();
+        return node.dataset.markupId;
+      }
+
+      _textElement(state, node, textEl, text) {
+        const B = window.MarkupBridge;
+        const at = this._baselineOf(textEl, state);
+        const pt = this._pageRect(state, at.x, at.y, 0, 0);
+        const element = {
+          id: this._markupIdOf(node),
+          kind: 'text',
+          x_pt: B.round(pt.x),
+          y_pt: B.round(pt.y),
+          text,
+          font: B.fontToWire(textEl.dataset.fontFamily || textEl.style.fontFamily),
+          size_pt: B.round(B.clamp(parseFloat(textEl.dataset.fontSize) || 11, 6, 48)),
+        };
+        if (textEl.dataset.bold === 'true') element.bold = true;
+        if (textEl.dataset.italic === 'true') element.italic = true;
+        const color = B.colorToWire(textEl.dataset.color || '#000000');
+        if (color !== 'black') element.color = color;
+        return element;
+      }
+
+      /** Every mark this page adds, as markup elements (no page: the caller knows it). */
+      collectPageMarkup(state) {
+        const B = window.MarkupBridge;
+        const out = [];
+        const clean = (value) => (value || '').replace(/\u00A0/g, ' ').replace(/\s*\n\s*/g, ' ').trim();
+        state.domLayer.querySelectorAll('.added-obj[data-type="added-text"]').forEach((wrap) => {
+          const ed = wrap.querySelector('.added-text-editor');
+          const text = ed ? clean(ed.textContent) : '';
+          if (text) out.push(this._textElement(state, wrap, ed, text.slice(0, 200)));
+        });
+        // Text typed on a blank (a rule of the page, or "____" in its text).
+        for (const entry of (this.registry || new Map()).values()) {
+          if (entry.state !== state || !entry.el.isConnected) continue;
+          if (entry.kind !== 'underscore' && entry.kind !== 'vector' && entry.kind !== 'added') continue;
+          const text = clean(entry.textEl.textContent);
+          if (text) out.push(this._textElement(state, entry.el, entry.textEl, text.slice(0, 200)));
+        }
+        const markAt = (node, cx, cy, px, kind) => {
+          const pt = this._pageRect(state, cx, cy, 0, 0);
+          out.push({
+            id: this._markupIdOf(node),
+            kind,
+            x_pt: B.round(pt.x),
+            y_pt: B.round(pt.y),
+            size_pt: B.round(B.clamp(px / state.scale * 0.75, 6, 72)),
+          });
+        };
+        state.domLayer.querySelectorAll('.added-obj[data-type="check"], .added-obj[data-type="cross"]').forEach((el) => {
+          const left = parseFloat(el.style.left) || 0;
+          const top = parseFloat(el.style.top) || 0;
+          markAt(el, left + el.offsetWidth / 2, top + el.offsetHeight / 2, Math.min(el.offsetWidth, el.offsetHeight), el.dataset.type);
+        });
+        state.domLayer.querySelectorAll('.sejda-auto-checkbox').forEach((box) => {
+          const mark = box.textContent.trim();
+          if (mark !== '✓' && mark !== '✕') return;
+          const left = parseFloat(box.style.left) || 0;
+          const top = parseFloat(box.style.top) || 0;
+          const w = parseFloat(box.style.width) || box.offsetWidth;
+          const h = parseFloat(box.style.height) || box.offsetHeight;
+          markAt(box, left + w / 2, top + h / 2, Math.min(w, h) * 1.05, mark === '✓' ? 'check' : 'cross');
+        });
+        state.domLayer.querySelectorAll('.sejda-box-item[data-type="whiteout"]').forEach((box) => {
+          const rect = this._pageRect(state, parseFloat(box.style.left) || 0, parseFloat(box.style.top) || 0, box.offsetWidth, box.offsetHeight);
+          if (rect.w < 1 || rect.h < 1) return;
+          out.push({ id: this._markupIdOf(box), kind: 'whiteout', x_pt: B.round(rect.x), y_pt: B.round(rect.y), w_pt: B.round(rect.w), h_pt: B.round(rect.h) });
+        });
+        // A mark the person did not move or change keeps the exact values it
+        // was loaded with: a zoom's rounding is not a change to save.
+        return out.map((fresh) => {
+          const node = state.domLayer.querySelector(`[data-markup-id="${fresh.id}"]`);
+          if (!node || !node.dataset.markupOrig) return fresh;
+          let original;
+          try {
+            original = JSON.parse(node.dataset.markupOrig);
+          } catch (error) {
+            return fresh;
+          }
+          const keys = new Set([...Object.keys(original), ...Object.keys(fresh)]);
+          keys.delete('page_uid');
+          for (const key of keys) {
+            const a = original[key];
+            const b = fresh[key];
+            if (typeof a === 'number' && typeof b === 'number') {
+              if (Math.abs(a - b) > 1.5) return fresh;
+            } else if (a !== b) {
+              return fresh;
+            }
+          }
+          const { page_uid: ignored, ...kept } = original;
+          return kept;
+        });
+      }
+
+      /** [{ pageIndex, element }] for every page. */
+      collectMarkup() {
+        const all = [];
+        this.pages.forEach((state) => {
+          this.collectPageMarkup(state).forEach((element) => all.push({ pageIndex: state.pageIndex, element }));
+        });
+        return all;
+      }
+
+      /** Shows saved / carried markup elements on a page as editable marks. */
+      restorePageMarkup(state, elements) {
+        const B = window.MarkupBridge;
+        for (const element of elements || []) {
+          if (element.kind === 'text') {
+            const at = this._toPx(state, element.x_pt, element.y_pt);
+            // A text on a blank goes back into that blank's input.
+            const blank = [...(this.registry || new Map()).values()].find((entry) => {
+              if (entry.state !== state || !['underscore', 'vector', 'added'].includes(entry.kind)) return false;
+              // An empty blank, or the one already showing this text (a zoom carries both ways).
+              const current = entry.textEl.textContent.trim();
+              if (current && current !== element.text) return false;
+              const r = entry.px;
+              return at.x >= r.x - 4 && at.x <= r.x + r.w && at.y >= r.top - 2 && at.y <= r.top + r.h + 6;
+            });
+            const family = B.fontFromWire(element.font);
+            const style = (el) => {
+              el.dataset.fontSize = String(element.size_pt);
+              el.dataset.fontFamily = family;
+              el.dataset.bold = element.bold ? 'true' : 'false';
+              el.dataset.italic = element.italic ? 'true' : 'false';
+              el.dataset.color = B.colorFromWire(element.color || 'black');
+              el.style.fontSize = `${element.size_pt * state.scale}px`;
+              el.style.fontFamily = family;
+              el.style.fontWeight = element.bold ? 'bold' : 'normal';
+              el.style.fontStyle = element.italic ? 'italic' : 'normal';
+              el.style.color = el.dataset.color;
+            };
+            if (blank) {
+              style(blank.textEl);
+              blank.textEl.textContent = element.text;
+              blank.el.dataset.markupId = element.id;
+              blank.el.dataset.markupOrig = JSON.stringify(element);
+              continue;
+            }
+            const wrap = this._spawnNewText(state, at.x, at.y, true);
+            const ed = wrap.querySelector('.added-text-editor');
+            style(ed);
+            ed.textContent = element.text;
+            const got = this._baselineOf(ed, state);
+            wrap.style.left = `${(parseFloat(wrap.style.left) || 0) + at.x - got.x}px`;
+            wrap.style.top = `${(parseFloat(wrap.style.top) || 0) + at.y - got.y}px`;
+            wrap.dataset.markupId = element.id;
+            wrap.dataset.markupOrig = JSON.stringify(element);
+          } else if (element.kind === 'check' || element.kind === 'cross') {
+            const at = this._toPx(state, element.x_pt, element.y_pt);
+            const glyph = element.kind === 'check' ? '✓' : '✕';
+            const box = [...state.domLayer.querySelectorAll('.sejda-auto-checkbox')].find((node) => {
+              const left = parseFloat(node.style.left) || 0;
+              const top = parseFloat(node.style.top) || 0;
+              const current = node.textContent.trim();
+              // An empty box, or the one already showing this mark (a zoom carries both ways).
+              if (current && current !== glyph) return false;
+              if (current && node.dataset.markupId && node.dataset.markupId !== element.id) return false;
+              return at.x >= left && at.x <= left + node.offsetWidth && at.y >= top && at.y <= top + node.offsetHeight;
+            });
+            if (box) {
+              box.textContent = element.kind === 'check' ? '✓' : '✕';
+              box.dataset.markupId = element.id;
+              box.dataset.markupOrig = JSON.stringify(element);
+              continue;
+            }
+            const el = this._spawnMark(state, element.kind, at.x, at.y, element.size_pt / 0.75 * state.scale, true);
+            el.dataset.markupId = element.id;
+            el.dataset.markupOrig = JSON.stringify(element);
+          } else if (element.kind === 'whiteout') {
+            const a = this._toPx(state, element.x_pt, element.y_pt);
+            const b = this._toPx(state, element.x_pt + element.w_pt, element.y_pt + element.h_pt);
+            const box = this._createResizableBox(state, Math.min(a.x, b.x), Math.min(a.y, b.y), Math.abs(b.x - a.x), Math.abs(b.y - a.y), 'whiteout', true);
+            box.dataset.markupId = element.id;
+            box.dataset.markupOrig = JSON.stringify(element);
+          }
+        }
+      }
+
+      /** A ✓ or ✕ centred on (cx, cy) px, `px` square. */
+      _spawnMark(state, kind, cx, cy, px, quiet = false) {
+        const el = this._createObjWrap(state, cx - px / 2, cy - px / 2, px, px, kind, quiet);
+        el.textContent = kind === 'check' ? '✓' : '✕';
+        el.style.cssText += `display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:${px * 0.8}px;line-height:1;color:#0956a6;`;
+        return el;
+      }
+
+      _spawnNewText(state, x, y, quiet = false) {
+        const wrap = this._createObjWrap(state, x, y, null, null, 'added-text', quiet);
         const ed = document.createElement('div');
         ed.className = 'added-text-editor';
         ed.contentEditable = 'true';
@@ -1852,7 +2073,8 @@
           this._positionBar(this.textBar, ed);
         });
 
-        ed.focus();
+        if (!quiet) ed.focus();
+        return wrap;
       }
 
       _spawnImage(state, x, y, src, w, h) {
@@ -2237,12 +2459,31 @@
         }
       });
       let baseVersionNo = null; // the version the editor works on; a save builds on it
+      // The contract's saved markup the editor shows (and replaces on save).
+      let markupTaken = new Set();
+      let markupShown = '[]';
+      const showContractMarkup = async () => {
+        markupTaken = new Set();
+        try {
+          const [uidByIndex, saved] = await Promise.all([
+            pageUidsOf(contractId, baseVersionNo),
+            loadContractMarkup(contractId),
+          ]);
+          const { byPage, taken } = window.MarkupBridge.splitForPages(saved.elements, uidByIndex);
+          markupTaken = taken;
+          engine.pages.forEach((state) => engine.restorePageMarkup(state, byPage.get(state.pageIndex) || []));
+        } catch (error) {
+          statusLine.textContent = 'Qo‘shilgan matn va belgilar yuklanmadi.';
+        }
+        markupShown = window.MarkupBridge.signature(engine.collectMarkup());
+      };
       try {
         if (contractId) {
           statusLine.textContent = 'Shartnoma yuklanmoqda…';
           const loaded = await loadContractVersion(contractId);
           baseVersionNo = loaded.versionNo;
           await engine.loadPDF(loaded.bytes);
+          await showContractMarkup();
           statusLine.textContent = `Versiya ${baseVersionNo} ochildi.`;
         } else {
           await engine.loadPDF(await buildBinarySamplePdf());
@@ -2261,7 +2502,7 @@
       const NOT_SAVED = 'Hozircha shartnomaga saqlanmaydi';
       if (contractId) {
         document.querySelectorAll('#main-toolbar .s-tool[data-tool]').forEach((btn) => {
-          if (btn.dataset.tool === 'text') return;
+          if (['text', 'check', 'cross', 'whiteout'].includes(btn.dataset.tool)) return;
           if (btn.dataset.tool === 'sign' && editorIsEmbedded()) return;
           btn.classList.add('not-saved');
           btn.setAttribute('aria-disabled', 'true');
@@ -2344,6 +2585,18 @@
         saveButton.disabled = busy;
         if (text) statusLine.textContent = text;
       };
+      // After a save: the file and the markup the server now holds, so the next edits build on them.
+      const showSaved = async (note) => {
+        const loaded = await loadContractVersion(contractId);
+        baseVersionNo = loaded.versionNo;
+        await engine.loadPDF(loaded.bytes);
+        await showContractMarkup();
+        statusLine.textContent = note;
+        notifyContractPage('editor:saved');
+        buildPageList(engine).catch(() => {});
+        if (window.SignOverlays) window.SignOverlays.drawAll();
+      };
+
       saveButton.onclick = async () => {
         if (!contractId || baseVersionNo === null || !engine.pdfBytes) {
           statusLine.textContent = 'Shartnoma hali yuklanmadi.';
@@ -2355,12 +2608,20 @@
           statusLine.textContent = `Saqlanmadi: ${plan.unsupported.join(' ')}`;
           return;
         }
-        if (!plan.edits.length) {
+        const marks = engine.collectMarkup();
+        const marksChanged = window.MarkupBridge.signature(marks) !== markupShown;
+        if (!plan.edits.length && !marksChanged) {
           statusLine.textContent = 'O‘zgarish yo‘q.';
           return;
         }
         setBusy(true, 'Saqlanmoqda…');
         try {
+          if (!plan.edits.length) {
+            // Only added text / marks: they are the contract's markup, the PDF itself stays as it is.
+            await saveContractMarkup(contractId, baseVersionNo, marks, markupTaken);
+            await showSaved('Saqlandi: qo‘shilgan matn va belgilar.');
+            return;
+          }
           const result = await saveEditsToContract(contractId, baseVersionNo, plan.edits, {
             confirmSignatures: (count) => window.confirm(
               `Bu shartnomada ${count} ta imzo bor. Hujjat o‘zgargani uchun ular o‘chiriladi va shartnoma qayta imzolanadi. Davom etamizmi?`,
@@ -2378,13 +2639,16 @@
             statusLine.textContent = 'Saqlanmadi: imzolar o‘chirilishi bekor qilindi.';
             return;
           }
-          // Show the file the server now holds, so the next edits build on it.
-          const loaded = await loadContractVersion(contractId);
-          await engine.loadPDF(loaded.bytes);
-          baseVersionNo = loaded.versionNo;
-          statusLine.textContent = describeSavedVersion(result.version);
-          notifyContractPage('editor:saved');
-          buildPageList(engine).catch(() => {});
+          baseVersionNo = result.version.version.version_no;
+          let note = describeSavedVersion(result.version);
+          if (marksChanged) {
+            try {
+              await saveContractMarkup(contractId, baseVersionNo, marks, markupTaken);
+            } catch (error) {
+              note += ` Qo‘shilgan matn va belgilar saqlanmadi: ${describeSaveFailure(error)}`;
+            }
+          }
+          await showSaved(note);
         } catch (error) {
           statusLine.textContent = describeSaveFailure(error);
         } finally {
