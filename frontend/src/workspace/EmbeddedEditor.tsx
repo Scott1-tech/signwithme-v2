@@ -16,6 +16,10 @@ interface Props {
   onSignAt?: (page: number, x: number, y: number) => void;
   /** A signature or date was dragged in the editor (points, right / down positive). */
   onOverlayMove?: (key: string, dx: number, dy: number) => void;
+  /** A signature or date was taken off in the editor. */
+  onOverlayDelete?: (key: string) => void;
+  /** A signature or date was resized in the editor (new width / old width). */
+  onOverlayResize?: (key: string, ratio: number) => void;
 }
 
 /**
@@ -32,12 +36,22 @@ interface Props {
  *
  * Messages are accepted from this page's own origin only.
  */
-export function EmbeddedEditor({ contractId, focus, onSaved, overlays, signHistory, onSignAt, onOverlayMove }: Props) {
+export function EmbeddedEditor({
+  contractId,
+  focus,
+  onSaved,
+  overlays,
+  signHistory,
+  onSignAt,
+  onOverlayMove,
+  onOverlayDelete,
+  onOverlayResize,
+}: Props) {
   const frameRef = useRef<HTMLIFrameElement>(null);
   const history = useRef(signHistory);
   history.current = signHistory;
-  const handlers = useRef({ onSignAt, onOverlayMove });
-  handlers.current = { onSignAt, onOverlayMove };
+  const handlers = useRef({ onSignAt, onOverlayMove, onOverlayDelete, onOverlayResize });
+  handlers.current = { onSignAt, onOverlayMove, onOverlayDelete, onOverlayResize };
 
   const sendOverlays = useCallback(() => {
     const target = frameRef.current?.contentWindow;
@@ -66,6 +80,15 @@ export function EmbeddedEditor({ contractId, focus, onSaved, overlays, signHisto
         const x = num(data.x);
         const y = num(data.y);
         if (page !== null && x !== null && y !== null) handlers.current.onSignAt?.(page, x, y);
+        return;
+      }
+      if (data.type === 'editor:overlay-delete') {
+        if (typeof data.key === 'string') handlers.current.onOverlayDelete?.(data.key);
+        return;
+      }
+      if (data.type === 'editor:overlay-resize') {
+        const ratio = num(data.ratio);
+        if (typeof data.key === 'string' && ratio !== null) handlers.current.onOverlayResize?.(data.key, ratio);
         return;
       }
       if (data.type === 'editor:overlay-move') {
