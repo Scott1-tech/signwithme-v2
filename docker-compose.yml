@@ -73,6 +73,8 @@ services:
       # (Caddy, a load balancer) in front of nginx, add its address here too.
       TRUSTED_PROXY_CIDRS: ${TRUSTED_PROXY_CIDRS:-172.28.0.10/32}
       ALLOW_SELF_REGISTRATION: ${ALLOW_SELF_REGISTRATION:-true}
+      # The address people open, used in share-for-fill links.
+      SHARE_BASE_URL: ${SHARE_BASE_URL:-http://localhost:3000}
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
@@ -126,6 +128,26 @@ services:
       default:
         # Fixed, so the backend can name it in TRUSTED_PROXY_CIDRS.
         ipv4_address: 172.28.0.10
+
+  # Optional (`--profile tunnel`): reach the app from the internet through a
+  # Cloudflare Tunnel, with no port opened on the router. The tunnel and its
+  # public hostname are created in the Cloudflare dashboard (Zero Trust ->
+  # Networks -> Tunnels); the hostname's service is http://frontend:80 and the
+  # token goes into .env as CLOUDFLARE_TUNNEL_TOKEN.
+  cloudflared:
+    image: cloudflare/cloudflared:2026.10.0
+    profiles: ["tunnel"]
+    restart: unless-stopped
+    command: ["tunnel", "--no-autoupdate", "run"]
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    depends_on:
+      frontend: { condition: service_started }
+    networks:
+      default:
+        # Fixed: nginx believes the visitor's address (CF-Connecting-IP) only
+        # from this container, so nobody else can claim another address.
+        ipv4_address: 172.28.0.20
 
 networks:
   default:

@@ -43,3 +43,6 @@ tests/acceptance/runs/
 *.log
 .local_run*
 .vite-dev*
+
+# Windows office server backups (scripts/windows/backup.ps1): contract data with SSNs
+/backups/
