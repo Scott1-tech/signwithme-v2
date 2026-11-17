@@ -30,11 +30,13 @@ import { useStoredChoice, useStoredFlag } from '../hooks/useStoredPreference';
 import { annotationsForRequest, isImage, type Annotation } from '../lib/annotations';
 import { computeSigningGate } from '../lib/gate';
 import {
+  clampFontSize,
   clampToRange,
   fitLayoutToPages,
   removedSlotSet,
   slotOffsetBounds,
   withSlotOffset,
+  withSlotScale,
   signatureScaleFor,
   withSlotRemoved,
   withoutRemovedSlots,
@@ -548,6 +550,47 @@ export function Workspace() {
       x: Math.max(0, Math.min(maxX, box.x + dx)),
       y: Math.max(0, Math.min(maxY, box.y + dy)),
     });
+  });
+
+  /** A signature or date taken off in the editor (its ✕): the signature row goes, the date is cleared. */
+  const deleteEditorOverlay = useStableCallback(async (key: string) => {
+    if (key.startsWith('date:')) {
+      dates.set(key.slice(5), '');
+      return;
+    }
+    if (!key.startsWith('sig:')) return;
+    const id = key.slice(4);
+    if (await removeSignature(id)) initials.forgetOne(id);
+  });
+
+  /**
+   * A signature or date resized in the editor by `ratio` (new width / old).
+   * A slot signature keeps its own size in the layout (`slot_scales`), a free
+   * one gets a new box; dates share one size, so every date follows.
+   */
+  const resizeEditorOverlay = useStableCallback((key: string, ratio: number) => {
+    if (!Number.isFinite(ratio) || ratio <= 0 || Math.abs(ratio - 1) < 0.01) return;
+    if (key.startsWith('date:')) {
+      commitLayout((current) => ({ ...current, date_font_size: clampFontSize(current.date_font_size * ratio) }), {
+        label: 'Date size',
+      });
+      return;
+    }
+    if (!key.startsWith('sig:')) return;
+    const signature = signatures.find((row) => row.id === key.slice(4));
+    if (!signature) return;
+    const fieldId = signature.field_id;
+    if (fieldId && slotById.get(fieldId)?.kind === 'signature') {
+      commitLayout((current) => withSlotScale(current, fieldId, resize.scaleOf(fieldId) * ratio), {
+        label: 'Resize signature',
+      });
+      return;
+    }
+    const box = signature.bbox;
+    const size = pageSizeOf(signature.page_number);
+    const width = Math.max(12, Math.min(size ? size.width - box.x : Infinity, box.width * ratio));
+    const height = (box.height * width) / box.width;
+    void resizeFreeSignature(signature.id, { ...box, width, height });
   });
 
   /** The editor's Sign tool: a click on the page opens the signature dialog for that spot. */
@@ -1877,6 +1920,8 @@ export function Workspace() {
             signHistory={signHistory}
             onSignAt={signFromEditor}
             onOverlayMove={moveEditorOverlay}
+            onOverlayDelete={(key) => void deleteEditorOverlay(key)}
+            onOverlayResize={resizeEditorOverlay}
             onSaved={() => {
               // The new version, its analysis and any removed signatures are
               // read again in place: no page reload, and the file the editor

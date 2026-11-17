@@ -14,7 +14,7 @@
  */
 (function () {
   const origin = window.location.origin;
-  const state = { overlays: [], lastAt: -1, canRedo: false, busy: false };
+  const state = { overlays: [], lastAt: -1, canRedo: false, busy: false, selected: null };
 
   function post(type) {
     if (window.parent !== window) window.parent.postMessage({ type }, origin);
@@ -82,6 +82,8 @@
         el.classList.remove('sign-overlay-dragging');
         if (!moved || up.type === 'pointercancel') {
           place(0, 0);
+          // A click without a drag selects it: ✕ takes it off, the corner resizes it.
+          if (up.type !== 'pointercancel') select(overlay.key);
           return;
         }
         // Screen pixels -> PDF points through the page's own viewport (zoom and turn included).
@@ -98,6 +100,118 @@
       el.addEventListener('pointercancel', onUp);
     });
   }
+
+  /* -- selection: a frame with ✕ (take off) and a corner (resize) ------------ */
+
+  function select(key) {
+    state.selected = key;
+    drawAll();
+  }
+
+  function deselect() {
+    if (state.selected === null) return;
+    state.selected = null;
+    document.querySelectorAll('.sign-overlay-frame').forEach((frame) => frame.remove());
+  }
+
+  function takeOff(key) {
+    state.selected = null;
+    document.querySelectorAll('.sign-overlay-frame').forEach((frame) => frame.remove());
+    window.parent.postMessage({ type: 'editor:overlay-delete', key }, origin);
+  }
+
+  function drawFrame(layer, el, overlay) {
+    const layerBox = layer.getBoundingClientRect();
+    const box = el.getBoundingClientRect();
+    if (!box.width || !box.height) return;
+    const frame = document.createElement('div');
+    frame.className = 'sign-overlay-frame';
+    frame.style.left = `${box.left - layerBox.left - 3}px`;
+    frame.style.top = `${box.top - layerBox.top - 3}px`;
+    frame.style.width = `${box.width + 6}px`;
+    frame.style.height = `${box.height + 6}px`;
+
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'sign-overlay-remove';
+    remove.title = overlay.kind === 'date' ? 'Clear this date' : 'Remove this signature';
+    remove.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+    remove.addEventListener('pointerdown', (event) => event.stopPropagation());
+    remove.addEventListener('mousedown', (event) => event.stopPropagation());
+    remove.addEventListener('click', (event) => {
+      event.stopPropagation();
+      takeOff(overlay.key);
+    });
+
+    const corner = document.createElement('div');
+    corner.className = 'sign-overlay-resize';
+    corner.title = overlay.kind === 'date' ? 'Drag to resize (all dates)' : 'Drag to resize';
+    corner.addEventListener('mousedown', (event) => event.stopPropagation());
+    corner.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0 || state.busy) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const startX = event.clientX;
+      const startY = event.clientY;
+      const startW = box.width;
+      const startH = box.height;
+      let ratio = 1;
+      try {
+        corner.setPointerCapture(event.pointerId);
+      } catch (error) {
+        // resizing still works without capture
+      }
+      const isSvg = el instanceof SVGElement;
+      const onMove = (move) => {
+        // The larger of the two pulls decides, so the shape keeps its proportions.
+        const byX = (startW + (move.clientX - startX)) / startW;
+        const byY = (startH + (move.clientY - startY)) / startH;
+        ratio = Math.max(0.3, Math.min(3, Math.max(byX, byY)));
+        frame.style.width = `${startW * ratio + 6}px`;
+        frame.style.height = `${startH * ratio + 6}px`;
+        if (isSvg) {
+          el.setAttribute('font-size', String(overlay.fontSize * page.viewport.scale * ratio));
+        } else {
+          el.style.transformOrigin = 'left top';
+          el.style.transform = `scale(${ratio})`;
+        }
+      };
+      const onUp = () => {
+        corner.removeEventListener('pointermove', onMove);
+        corner.removeEventListener('pointerup', onUp);
+        corner.removeEventListener('pointercancel', onUp);
+        if (Math.abs(ratio - 1) >= 0.01) {
+          window.parent.postMessage({ type: 'editor:overlay-resize', key: overlay.key, ratio }, origin);
+        } else {
+          drawAll();
+        }
+      };
+      corner.addEventListener('pointermove', onMove);
+      corner.addEventListener('pointerup', onUp);
+      corner.addEventListener('pointercancel', onUp);
+    });
+    // `page` for the svg preview above.
+    const page = engine() && engine().pages.find((item) => item.stage && item.stage.contains(layer));
+    frame.append(remove, corner);
+    layer.appendChild(frame);
+  }
+
+  // A click elsewhere, Esc, or Delete / Backspace on the selected one.
+  document.addEventListener('pointerdown', (event) => {
+    if (state.selected === null) return;
+    if (event.target.closest && (event.target.closest('.sign-overlay-frame') || event.target.closest('[data-key]'))) return;
+    deselect();
+  }, true);
+  document.addEventListener('keydown', (event) => {
+    if (state.selected === null) return;
+    const active = document.activeElement;
+    if (active && (active.isContentEditable || /INPUT|TEXTAREA|SELECT/.test(active.tagName))) return;
+    if (event.key === 'Escape') deselect();
+    if (event.key === 'Delete' || event.key === 'Backspace') {
+      event.preventDefault();
+      takeOff(state.selected);
+    }
+  });
 
   function draw(page) {
     if (!page || !page.stage || !page.viewport || !page.pdfPage) return;
@@ -134,6 +248,10 @@
         el.style.height = `${box.height}px`;
         if (overlay.src) makeDraggable(el, page, overlay, false);
         layer.appendChild(el);
+        if (overlay.src && state.selected === overlay.key) {
+          if (el.complete) drawFrame(layer, el, overlay);
+          else el.addEventListener('load', () => drawFrame(layer, el, overlay), { once: true });
+        }
       } else if (overlay.kind === 'date') {
         if (!svg) {
           svg = document.createElementNS(svgNs, 'svg');
@@ -151,6 +269,7 @@
         text.textContent = overlay.text;
         makeDraggable(text, page, overlay, true);
         svg.appendChild(text);
+        if (state.selected === overlay.key) drawFrame(layer, text, overlay);
       }
     });
   }
@@ -176,6 +295,8 @@
     const data = event.data;
     if (!data || data.type !== 'editor:overlays') return;
     state.overlays = Array.isArray(data.overlays) ? data.overlays : [];
+    // A selection whose mark is gone (taken off, undone) goes with it.
+    if (state.selected !== null && !state.overlays.some((overlay) => overlay && overlay.key === state.selected)) state.selected = null;
     state.lastAt = typeof data.lastAt === 'number' ? data.lastAt : -1;
     state.canRedo = Boolean(data.canRedo);
     state.busy = Boolean(data.busy);

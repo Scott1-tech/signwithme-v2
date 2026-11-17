@@ -155,6 +155,58 @@
         });
       }
 
+      /**
+       * Press on a text that is not being edited: dragging moves it (like a
+       * placed signature), a click without a drag puts the cursor there to edit.
+       */
+      _dragOrEdit(e, target, editable) {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        const sx = e.clientX;
+        const sy = e.clientY;
+        const sl = parseFloat(target.style.left) || 0;
+        const st = parseFloat(target.style.top) || 0;
+        const pageState = this.pages.find((p) => p.stage === target.closest('.pdf-stage')) || this.pages[0];
+        const sc = pageState ? pageState.scale : 1.35;
+        let moving = false;
+        const onMove = (ev) => {
+          const dx = ev.clientX - sx;
+          const dy = ev.clientY - sy;
+          if (!moving && Math.hypot(dx, dy) < 4) return;
+          if (!moving) {
+            moving = true;
+            this.textBar.classList.remove('visible');
+            document.body.classList.add('moving-text');
+          }
+          target.style.left = `${sl + dx}px`;
+          target.style.top = `${st + dy}px`;
+          if (target.classList.contains('sejda-line')) {
+            target.dataset.dx = ((sl + dx - parseFloat(target.dataset.initLeft)) / sc).toFixed(2);
+            target.dataset.dy = ((st + dy - parseFloat(target.dataset.initTop)) / sc).toFixed(2);
+            this._recordModification(target);
+          }
+        };
+        const onUp = (up) => {
+          window.removeEventListener('mousemove', onMove);
+          window.removeEventListener('mouseup', onUp);
+          document.body.classList.remove('moving-text');
+          if (moving) {
+            target.classList.add('selected');
+            return;
+          }
+          // A click: edit here, the cursor where the click was.
+          editable.focus();
+          const range = document.caretRangeFromPoint ? document.caretRangeFromPoint(up.clientX, up.clientY) : null;
+          if (range && editable.contains(range.startContainer)) {
+            const selection = window.getSelection();
+            selection.removeAllRanges();
+            selection.addRange(range);
+          }
+        };
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onUp);
+      }
+
       // The element a move takes: the line widget, the added object, or the text line itself.
       _moveTarget() {
         return this.focusedNode.closest('.sejda-editable-line')
@@ -1006,7 +1058,10 @@
           div.addEventListener('mousedown', (e) => {
             if (this.activeTool !== 'text') return;
             e.stopPropagation();
+            // Being edited: the mouse selects text as usual.
+            if (document.activeElement === div) return;
             this.deselectAll();
+            this._dragOrEdit(e, div, div);
           });
 
           div.addEventListener('focus', () => {
@@ -2184,7 +2239,13 @@
           document.querySelectorAll('.added-obj.selected, .sejda-box-item.selected').forEach(n => n.classList.remove('selected'));
           el.classList.add('selected');
 
-          if (e.target.isContentEditable || e.target.tagName === 'INPUT') return;
+          if (e.target.tagName === 'INPUT') return;
+          if (e.target.isContentEditable) {
+            // Being edited: the mouse selects text. Otherwise press-and-drag moves it, a click edits it.
+            if (document.activeElement === e.target) return;
+            this._dragOrEdit(e, el, e.target);
+            return;
+          }
 
           e.preventDefault();
           const sx = e.clientX, sy = e.clientY;
