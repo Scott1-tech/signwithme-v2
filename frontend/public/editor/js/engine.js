@@ -117,50 +117,95 @@
           );
         };
 
-        const moveBtn = bar.querySelector('[data-cmd="move"]');
-        moveBtn.onmousedown = (e) => {
+        bar.querySelector('[data-cmd="move"]').onmousedown = (e) => {
           if (!this.focusedNode) return;
-          e.preventDefault();
-          e.stopPropagation();
-          const target =
-            this.focusedNode.closest('.sejda-editable-line') ||
-            this.focusedNode.closest('.added-obj') ||
-            this.focusedNode;
-          const pageStage = target.closest('.pdf-stage');
-          const pageState = this.pages.find(p => p.stage === pageStage) || this.pages[0];
-          const sc = pageState ? pageState.scale : 1.35;
-
-          const sx = e.clientX, sy = e.clientY;
-          const sl = parseFloat(target.style.left) || 0;
-          const st = parseFloat(target.style.top) || 0;
-          // While dragging, the bar travels with the pointer (the handle stays
-          // under it) instead of jumping onto the text that is being moved.
-          const barLeft = parseFloat(bar.style.left) || 0;
-          const barTop = parseFloat(bar.style.top) || 0;
-          this.barDragging = true;
-
-          const onMove = (ev) => {
-            const nl = sl + (ev.clientX - sx);
-            const nt = st + (ev.clientY - sy);
-            target.style.left = `${nl}px`;
-            target.style.top = `${nt}px`;
-            if (target.classList.contains('sejda-line')) {
-              target.dataset.dx = ((nl - parseFloat(target.dataset.initLeft)) / sc).toFixed(2);
-              target.dataset.dy = ((nt - parseFloat(target.dataset.initTop)) / sc).toFixed(2);
-              this._recordModification(target);
-            }
-            bar.style.left = `${barLeft + (ev.clientX - sx)}px`;
-            bar.style.top = `${barTop + (ev.clientY - sy)}px`;
-          };
-          const onUp = () => {
-            window.removeEventListener('mousemove', onMove);
-            window.removeEventListener('mouseup', onUp);
-            this.barDragging = false;
-            this._positionBar(this.textBar, target);
-          };
-          window.addEventListener('mousemove', onMove);
-          window.addEventListener('mouseup', onUp);
+          this._startMove(e, this._moveTarget());
         };
+
+        // A grip right next to the text being edited: drag it to move the text
+        // (the bar's own ✥ does the same). It shows and hides with the bar.
+        const grip = document.createElement('div');
+        grip.className = 'line-grip';
+        grip.title = 'Surish uchun ushlab torting';
+        grip.innerHTML = '<i class="fa-solid fa-grip-vertical"></i>';
+        grip.addEventListener('mousedown', (e) => {
+          if (!this.focusedNode) return;
+          this._startMove(e, this._moveTarget());
+        });
+        document.body.appendChild(grip);
+        this.grip = grip;
+        new MutationObserver(() => {
+          if (!bar.classList.contains('visible')) grip.classList.remove('visible');
+        }).observe(bar, { attributes: true, attributeFilter: ['class'] });
+
+        // The bar and the grip are fixed on screen: they follow the text when the pages scroll.
+        window.addEventListener('scroll', () => {
+          if (this.barDragging || !bar.classList.contains('visible')) return;
+          if (this.barTarget && this.barTarget.isConnected) this._positionBar(bar, this.barTarget);
+        }, { capture: true, passive: true });
+
+        // Enter ends the edit of a line (a line of the PDF is one line): the bar goes away.
+        document.addEventListener('keydown', (e) => {
+          if (e.key !== 'Enter' || e.shiftKey) return;
+          const target = e.target;
+          if (!target.classList || !(target.classList.contains('sejda-line') || target.classList.contains('line-text-input'))) return;
+          e.preventDefault();
+          target.blur();
+          this.deselectAll();
+        });
+      }
+
+      // The element a move takes: the line widget, the added object, or the text line itself.
+      _moveTarget() {
+        return this.focusedNode.closest('.sejda-editable-line')
+          || this.focusedNode.closest('.added-obj')
+          || this.focusedNode;
+      }
+
+      _startMove(e, target) {
+        e.preventDefault();
+        e.stopPropagation();
+        const bar = this.textBar;
+        const grip = this.grip;
+        const pageStage = target.closest('.pdf-stage');
+        const pageState = this.pages.find(p => p.stage === pageStage) || this.pages[0];
+        const sc = pageState ? pageState.scale : 1.35;
+        const sx = e.clientX, sy = e.clientY;
+        const sl = parseFloat(target.style.left) || 0;
+        const st = parseFloat(target.style.top) || 0;
+        // While dragging, the bar and the grip travel with the pointer instead
+        // of jumping onto the text that is being moved.
+        const barLeft = parseFloat(bar.style.left) || 0;
+        const barTop = parseFloat(bar.style.top) || 0;
+        const gripLeft = parseFloat(grip.style.left) || 0;
+        const gripTop = parseFloat(grip.style.top) || 0;
+        this.barDragging = true;
+        document.body.classList.add('moving-text');
+
+        const onMove = (ev) => {
+          const nl = sl + (ev.clientX - sx);
+          const nt = st + (ev.clientY - sy);
+          target.style.left = `${nl}px`;
+          target.style.top = `${nt}px`;
+          if (target.classList.contains('sejda-line')) {
+            target.dataset.dx = ((nl - parseFloat(target.dataset.initLeft)) / sc).toFixed(2);
+            target.dataset.dy = ((nt - parseFloat(target.dataset.initTop)) / sc).toFixed(2);
+            this._recordModification(target);
+          }
+          bar.style.left = `${barLeft + (ev.clientX - sx)}px`;
+          bar.style.top = `${barTop + (ev.clientY - sy)}px`;
+          grip.style.left = `${gripLeft + (ev.clientX - sx)}px`;
+          grip.style.top = `${gripTop + (ev.clientY - sy)}px`;
+        };
+        const onUp = () => {
+          window.removeEventListener('mousemove', onMove);
+          window.removeEventListener('mouseup', onUp);
+          this.barDragging = false;
+          document.body.classList.remove('moving-text');
+          this._positionBar(this.textBar, target);
+        };
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onUp);
       }
 
       _buildBoxFloatingBar() {
@@ -1283,6 +1328,12 @@
         const above = r.top - barH - 14;
         barEl.style.top = `${above >= floor ? above : Math.min(window.innerHeight - barH - 6, r.bottom + 14)}px`;
         barEl.style.left = `${Math.max(12, Math.min(window.innerWidth - barW - 12, r.left))}px`;
+        if (barEl === this.textBar) this.barTarget = targetNode;
+        if (barEl === this.textBar && this.grip) {
+          this.grip.classList.add('visible');
+          this.grip.style.left = `${Math.max(2, r.left - 22)}px`;
+          this.grip.style.top = `${r.top + r.height / 2 - 11}px`;
+        }
 
         if (barEl === this.textBar && this.focusedNode) {
           barEl.querySelector('[data-cmd="bold"]').classList.toggle('active', this.focusedNode.dataset.bold === 'true');
@@ -1359,7 +1410,9 @@
 
       setTool(tool) {
         this.activeTool = tool;
-        document.body.className = `tool-${tool}`;
+        // Only the tool class changes: `embedded` and the others stay.
+        [...document.body.classList].filter((name) => name.startsWith('tool-')).forEach((name) => document.body.classList.remove(name));
+        document.body.classList.add(`tool-${tool}`);
         document.querySelectorAll('.annot-canvas').forEach(c => {
           c.classList.toggle('active', tool === 'annotate');
         });
@@ -1640,6 +1693,15 @@
             inp.style.cssText = 'width:100%;height:100%;border:1px solid #64748b;background:rgba(241,245,249,0.85);padding:2px 6px;font-size:13px;outline:none;';
             el.appendChild(inp);
             inp.focus();
+          } else if (this.activeTool === 'sign' && editorIsEmbedded()) {
+            // On the contract page a signature is the contract's own (saved,
+            // printed at finalize): the page opens its signature dialog for
+            // this spot -- saved, drawn, uploaded or typed.
+            const at = this._pageRect(state, startX, startY, 0, 0);
+            window.parent.postMessage(
+              { type: 'editor:sign-at', page: state.pageIndex + 1, x: at.x, y: at.y },
+              window.location.origin,
+            );
           } else if (this.activeTool === 'sign' && this.pendingSignature) {
             this._spawnImage(state, startX - 65, startY - 28, this.pendingSignature, 145, 55);
           } else if (this.activeTool === 'image' && this.pendingImage) {
@@ -2200,6 +2262,7 @@
       if (contractId) {
         document.querySelectorAll('#main-toolbar .s-tool[data-tool]').forEach((btn) => {
           if (btn.dataset.tool === 'text') return;
+          if (btn.dataset.tool === 'sign' && editorIsEmbedded()) return;
           btn.classList.add('not-saved');
           btn.setAttribute('aria-disabled', 'true');
           btn.title = NOT_SAVED;
@@ -2226,7 +2289,9 @@
           const tool = btn.dataset.tool;
           engine.setTool(tool);
 
-          if (tool === 'sign') document.getElementById('sig-modal').classList.add('open');
+          if (tool === 'sign' && contractId && editorIsEmbedded()) {
+            statusLine.textContent = 'Imzo qo‘yiladigan joyni sahifada bosing.';
+          } else if (tool === 'sign') document.getElementById('sig-modal').classList.add('open');
           if (tool === 'image') document.getElementById('img-upload').click();
         };
       });

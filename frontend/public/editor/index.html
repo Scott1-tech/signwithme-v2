@@ -140,6 +140,25 @@
     }
     .sejda-floating-bar.visible { display: flex; }
 
+    /* The grip beside the text being edited (engine.js `_startMove`). */
+    .line-grip {
+      position: fixed;
+      display: none;
+      width: 18px;
+      height: 22px;
+      align-items: center;
+      justify-content: center;
+      background: #2563eb;
+      color: #ffffff;
+      border-radius: 4px;
+      font-size: 11px;
+      cursor: move;
+      z-index: 5001;
+      box-shadow: 0 2px 6px rgba(37, 99, 235, 0.35);
+    }
+    .line-grip.visible { display: flex; }
+    body.moving-text, body.moving-text * { cursor: move !important; user-select: none !important; }
+
     .f-btn {
       border: 1px solid transparent;
       background: transparent;
@@ -244,7 +263,7 @@
       pointer-events: none;
     }
 
-    /* Signatures and dates placed on the contract page (js/sign-overlays.js): shown, never edited or saved here. */
+    /* Signatures and dates placed on the contract page (js/sign-overlays.js): shown here and draggable; the page stores them. */
     .sign-overlay-layer {
       position: absolute;
       inset: 0;
@@ -269,6 +288,15 @@
     }
     .sign-overlay-dates text {
       fill: #111827;
+    }
+    .sign-overlay-signature[data-key]:hover,
+    .sign-overlay-dragging {
+      outline: 1px dashed #2563eb;
+      outline-offset: 1px;
+    }
+    .sign-overlay-dates text[data-key]:hover,
+    .sign-overlay-dates text.sign-overlay-dragging {
+      fill: #1d4ed8;
     }
     #main-toolbar .s-tool:disabled {
       opacity: 0.45;
